@@ -100,9 +100,15 @@ namespace Mods.BeaverHRDepartment.UI
                 _workerList.Add(row);
             }
 
-            // Hide assign button if workplace is full
             bool isFull = workers.Count >= _currentWorkplace.MaxWorkers;
-            _assignButton.style.display = isFull ? DisplayStyle.None : DisplayStyle.Flex;
+            if (isFull)
+            {
+                _assignButton.text = "Swap Worker";
+            }
+            else
+            {
+                _assignButton.text = "Assign Worker";
+            }
         }
 
         private void OnAssignClicked()
@@ -120,7 +126,15 @@ namespace Mods.BeaverHRDepartment.UI
             {
                 var btn = new Button(() =>
                 {
-                    _assignmentService.AssignWorker(worker, _currentWorkplace);
+                    if (_currentWorkplace.AssignedWorkers.Count >= _currentWorkplace.MaxWorkers)
+                    {
+                        _assignmentService.SwapWorkers(worker, _currentWorkplace.AssignedWorkers.First());
+                    }
+                    else
+                    {
+                        _assignmentService.AssignWorker(worker, _currentWorkplace);
+                    }
+
                     _pickerVisible = false;
                     Hide(_pickerPanel);
                     RefreshWorkerList();
