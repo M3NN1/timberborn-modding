@@ -1,0 +1,4 @@
+ID,Text,Comment
+BHR.Panel.Title,Assignment,Panel header for workplace assignment
+BHR.Button.Assign,Assign Beaver,Button to open beaver picker
+BHR.Picker.NoUnemployed,No unemployed beavers,Shown when no beavers are available

@@ -1,0 +1,26 @@
+{
+  "name": "BeaverHRDepartment",
+  "rootNamespace": "Mods.BeaverHRDepartment",
+  "references": [
+    "Timberborn.Core",
+    "Timberborn.CoreUI",
+    "Timberborn.EntityPanelSystem",
+    "Timberborn.BaseComponentSystem",
+    "Timberborn.SingletonSystem",
+    "Timberborn.TemplateSystem",
+    "Timberborn.Persistence",
+    "Timberborn.Localization",
+    "Timberborn.Modding",
+    "Timberborn.WorkSystem",
+    "Bindito.Core"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -1,0 +1,11 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" engine="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="WorkplaceAssignmentPanel" class="bhr-panel">
+        <Style src="project://database/Assets/Mods/BeaverHRDepartment/AssetBundles/Resources/UI/Styles/BeaverHR.uss?fileID=7433441132597879392&amp;guid=8eab121f8a507e746a456256d3424a9d&amp;type=3#BeaverHR"/>
+        <ui:VisualElement class="bhr-panel__header">
+            <ui:Label text="Assignment" class="bhr-panel__title"/>
+        </ui:VisualElement>
+        <ui:VisualElement name="WorkerList" class="bhr-worker-list"/>
+        <ui:Button name="AssignButton" text="Assign Beaver" class="bhr-assign-btn"/>
+        <ui:ScrollView name="PickerPanel" horizontal-scroller-visibility="Hidden" vertical-scroller-visibility="Hidden" class="bhr-picker"/>
+    </ui:VisualElement>
+</ui:UXML>
