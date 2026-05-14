@@ -1,0 +1,44 @@
+.root-health-fragment {
+    color: rgba(204, 204, 204, 1);
+    margin: 1px;
+    padding: 6px;
+    border-radius: 2px;
+    background-color: rgba(34, 54, 42, 1);
+}
+
+.dam-health-label {
+    margin-bottom: 4px;
+    font-weight: bold;
+}
+
+.dam-status-label {
+    margin-bottom: 4px;
+}
+
+.health-bar-container {
+    height: 8px;
+    background-color: rgba(0, 0, 0, 0.4);
+    margin-bottom: 4px;
+}
+
+.health-bar-fill {
+    height: 8px;
+    background-color: rgb(77, 181, 77);
+}
+
+.health-bar-fill.warning {
+    background-color: rgb(230, 179, 26);
+}
+
+.health-bar-fill.critical {
+    background-color: rgb(204, 51, 51);
+}
+
+.repair-button {
+    padding: 4px 8px;
+    background-color: rgba(98, 83, 66, 1);
+    border-width: 1px;
+    border-color: rgba(176, 152, 102, 1);
+    border-radius: 2px;
+    color: rgba(204, 204, 204, 1);
+}

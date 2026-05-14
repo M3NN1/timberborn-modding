@@ -1,0 +1,9 @@
+{
+  "Name": "Damn Dam Degradation [ModContest1]",
+  "Version": "1.0.0",
+  "Id": "M3NN1.DamnDamDegradation",
+  "MinimumGameVersion": "1.0.0.0",
+  "Description": "Dams, levees and floodgates take Hydro-Stress damage proportional to the water depth they hold back. They show warning icons, leak before breaking, and breach catastrophically when ignored. Builder beavers automatically pick up repair jobs.",
+  "RequiredMods": [],
+  "OptionalMods": []
+}

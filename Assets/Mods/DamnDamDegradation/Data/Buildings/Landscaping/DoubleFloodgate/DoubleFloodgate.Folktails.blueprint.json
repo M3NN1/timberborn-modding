@@ -1,0 +1,13 @@
+{
+  "DamDeteriorationSpec": {
+    "MaxHealth": 70.0,
+    "BaseWearPerDay": 0.0,
+    "StressWearCoefficient": 0.12,
+    "StressExponent": 1.5,
+    "DownstreamSupportFactor": 0.5,
+    "WarningHealthFraction": 0.8,
+    "CriticalHealthFraction": 0.3,
+    "RepairAmount": 35.0,
+    "CascadeDamage": 25.0
+  }
+}

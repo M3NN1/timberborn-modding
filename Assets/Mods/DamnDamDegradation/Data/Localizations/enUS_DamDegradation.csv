@@ -1,0 +1,10 @@
+ID,Text,Comment
+DDD.DamIntegrity,Dam Integrity,Title shown on the entity panel fragment
+DDD.Repair,Repair,Repair button label when no work is needed
+DDD.Repair.Pending,Request Repair,Button label to queue a repair
+DDD.Repair.Cancel,Cancel Repair,Button label to remove from the repair queue
+DDD.Repair.Reserved,Repair in progress,Button label while a beaver is en route or working
+DDD.Status.Warning,Dam needs maintenance,Yellow status icon text
+DDD.Status.Critical,Dam is failing,Red status icon text
+DDD.Status.Critical.Short,Failing dam,Short alert version of the critical status
+DDD.Notification.Breach,A dam has breached!,Map notification when a block breaks

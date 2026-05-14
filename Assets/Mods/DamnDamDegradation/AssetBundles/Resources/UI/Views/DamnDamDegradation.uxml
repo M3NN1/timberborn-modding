@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ui="UnityEngine.UIElements"
+    xmlns:uie="UnityEditor.UIElements"
+    noNamespaceSchemaLocation="../../../../UIElementsSchema/UIElements.xsd"
+    editor-extension-mode="False"
+>
+    <ui:VisualElement name="DamHealthFragment" class="root-health-fragment">
+        <Style src="/Assets/Mods/DamnDamDegradation/AssetBundles/Resources/UI/Styles/DamnDamDegradation.uss" />
+
+        <ui:Label name="DamHealthTitle" class="dam-health-label" />
+        <ui:Label name="DamHealthStatus" class="dam-status-label" />
+
+        <ui:VisualElement name="DamHealthBarContainer" class="health-bar-container">
+            <ui:VisualElement name="DamHealthBarFill" class="health-bar-fill" />
+        </ui:VisualElement>
+
+        <ui:Button name="DamRepairButton" class="repair-button" />
+    </ui:VisualElement>
+</ui:UXML>
