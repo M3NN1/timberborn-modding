@@ -8,3 +8,16 @@ DDD.Status.Warning,Dam needs maintenance,Yellow status icon text
 DDD.Status.Critical,Dam is failing,Red status icon text
 DDD.Status.Critical.Short,Failing dam,Short alert version of the critical status
 DDD.Notification.Breach,A dam has breached!,Map notification when a block breaks
+DDD.Settings.Header,Damn Dam Degradation,Header shown above the mod settings group
+DDD.Settings.DegradationEnabled,Enable degradation,Master switch label
+DDD.Settings.DegradationEnabled.Tooltip,When off the mod still loads but no dam takes wear damage. Useful for save-game testing.,
+DDD.Settings.GlobalWearPercent,Wear speed (%),Global multiplier label
+DDD.Settings.GlobalWearPercent.Tooltip,Multiplier applied on top of every block's per-spec wear rate. 100% = default; lower = dams last longer.,
+DDD.Settings.RandomVariancePercent,Random variance (%),Variance label
+DDD.Settings.RandomVariancePercent.Tooltip,Per-tick random spread around the computed wear. 0 = deterministic; higher = noisier failures.,
+DDD.Settings.RepairTimeInHours,Repair time (in-game hours),Repair time label
+DDD.Settings.RepairTimeInHours.Tooltip,How many in-game hours a beaver spends per repair before productivity multipliers (Inventor and friends still apply on top).,
+DDD.Settings.RepairCostInPlanks,Repair cost (planks),Plank cost label (reserved)
+DDD.Settings.RepairCostInPlanks.Tooltip,Reserved for a future material-cost variant. The current executor ignores this value.,
+DDD.Settings.AllowInstantRepair,Instant repair button (debug),Instant repair toggle label
+DDD.Settings.AllowInstantRepair.Tooltip,When on, the entity panel's Repair button restores the dam instantly without summoning a beaver. Off by default; useful for debugging.

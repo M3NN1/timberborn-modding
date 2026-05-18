@@ -19,13 +19,17 @@ namespace Mods.DamDegradation.Configuration
     /// <item>Decorates every adult beaver with the repair Behavior + Executor.</item>
     /// <item>Registers the entity panel fragment + builder job provider.</item>
     /// </list>
+    /// <para>
+    /// <see cref="DamSettings"/> is bound separately by
+    /// <see cref="DamDegradationSettingsConfigurator"/> so the in-game
+    /// settings panel can find it from both the main menu and the game scene.
+    /// </para>
     /// </summary>
     [Context("Game")]
     public class DamDegradationConfigurator : Configurator
     {
         protected override void Configure()
         {
-            Bind<DamSettings>().AsSingleton();
             Bind<DamRepairRegistry>().AsSingleton();
 
             Bind<DamHealthFragment>().AsSingleton();
@@ -82,6 +86,22 @@ namespace Mods.DamDegradation.Configuration
                 builder.AddMiddleFragment(_fragment);
                 return builder.Build();
             }
+        }
+    }
+
+    /// <summary>
+    /// Registers <see cref="DamSettings"/> in both the main menu and the
+    /// game scene so the eMka.ModSettings panel can render the cog button on
+    /// the mod card and the player can tweak values before or during a game.
+    /// Mirrors the pattern used in <c>ModSettingsExamples</c>.
+    /// </summary>
+    [Context("MainMenu")]
+    [Context("Game")]
+    public class DamDegradationSettingsConfigurator : Configurator
+    {
+        protected override void Configure()
+        {
+            Bind<DamSettings>().AsSingleton();
         }
     }
 }
