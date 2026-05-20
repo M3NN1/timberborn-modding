@@ -1,0 +1,23 @@
+{
+  "RecipeSpec": {
+    "Id": "Soothesop",
+    "DisplayLocKey": "Recipe.Soothesop.DisplayName",
+    "CycleDurationInHours": 4,
+    "Ingredients": [
+      {
+        "Id": "Berries",
+        "Amount": 2
+      },
+      {
+        "Id": "Badwater",
+        "Amount": 1
+      }
+    ],
+    "Products": [
+      {
+        "Id": "Soothesop",
+        "Amount": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "MaterialCollectionSpec": {
+    "CollectionId": "Common",
+    "Materials#append": [
+        "Buildings/Creatures/Wyrm/Material_0",
+        "Buildings/Hazards/WyrmHusk/WyrmHusk_Base",
+        "Buildings/Hazards/WyrmDen/WyrmDen_Base"
+    ]
+  }
+}

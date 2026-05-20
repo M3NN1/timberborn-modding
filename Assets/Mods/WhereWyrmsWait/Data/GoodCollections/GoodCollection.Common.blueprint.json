@@ -1,0 +1,8 @@
+{
+  "GoodCollectionSpec": {
+    "CollectionId": "Common",
+    "Goods#append": [
+      "Soothesop"
+    ]
+  }
+}

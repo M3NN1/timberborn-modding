@@ -1,0 +1,12 @@
+{
+  "TemplateCollectionSpec": {
+    "CollectionId": "Common",
+    "Blueprints#append": [
+      "Buildings/Hazards/WyrmHusk/WyrmHusk.Common.blueprint",
+      "Buildings/Hazards/WyrmDen/WyrmDen.Common.blueprint",
+      "Buildings/Production/WyrmForager/WyrmForager.Common.blueprint",
+      "Buildings/Tools/LureStake/LureStake.Common.blueprint",
+      "Buildings/Creatures/Wyrm/Wyrm.Common.blueprint"
+    ]
+  }
+}

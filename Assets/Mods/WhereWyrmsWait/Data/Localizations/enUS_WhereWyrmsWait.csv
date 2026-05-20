@@ -1,0 +1,41 @@
+ID,Text,Comment
+WWW.Settings.Header,Where Wyrms Wait,Header above this mod's settings group
+WWW.Settings.ModEnabled,Enable mod,Master switch
+WWW.Settings.ModEnabled.Tooltip,When off the mod still loads but no husk warms up and no wyrm acts. Useful for testing maps without disturbing the existing layout.,
+WWW.Settings.WakeSpeedPercent,Wake speed (%),Global multiplier on warmup time
+WWW.Settings.WakeSpeedPercent.Tooltip,Multiplier applied on top of every husk's per-spec warmup days. 100% = default; lower = wyrms wake slower; higher = wyrms wake faster.,
+WWW.Settings.HungerRatePercent,Hunger rate (%),How fast wyrms get hungry
+WWW.Settings.HungerRatePercent.Tooltip,Multiplier on hunger accumulation. Higher = wyrms hunt sooner and chew walls more aggressively.,
+WWW.Settings.ContaminationResistancePercent,Contamination resistance (%),Wyrm tolerance for badwater
+WWW.Settings.ContaminationResistancePercent.Tooltip,Multiplier on the lethal contamination threshold. Higher = wyrms survive more total absorbed badwater before dying; killing one takes a sustained channeling effort.,
+WWW.Settings.SandboxMode,Sandbox mode,Pacifist toggle
+WWW.Settings.SandboxMode.Tooltip,When on; wyrms still wake and walk but never damage beavers or buildings. Useful for map authors testing layouts.,
+Building.WyrmHusk.DisplayName,Wyrm Husk,Map-author hazard tile
+Building.WyrmHusk.Description,The dried husk of a slumbering wyrm. Wakes when the soil above turns green.,
+Building.WyrmHusk.Flavor,The earth remembers what slept beneath it.,
+WWW.Husk.WarmingStatus,Stirring,Status while warming up
+WWW.Husk.DormantStatus,Dormant,Status while inert
+Creature.Wyrm.DisplayName,Wyrm,The active predator
+Creature.Wyrm.Description,A starved; ancient predator that emerged from the soil. It hunts beavers and chews through unfortified walls. Cannot be cured of badwater contamination.,
+Creature.Wyrm.Flavor,The earth gives back what it kept.,
+WWW.Wyrm.HungerLabel,Hunger,Entity panel hunger label
+WWW.Wyrm.ContaminationLabel,Contamination,Entity panel contamination label
+WWW.Wyrm.SatedStatus,Sated,Status while pacified by Soothesop
+WWW.Wyrm.HuntingStatus,Hunting,Status while pursuing a beaver
+WWW.Notification.BeaverEaten,Eaten by a wyrm,Death-message string when a wyrm catches a beaver
+Good.Soothesop.DisplayName,Soothesop,Singular form
+Good.Soothesop.PluralDisplayName,Soothesop,Plural form (English uncountable)
+Recipe.Soothesop.DisplayName,Soothesop,Recipe-card title
+Building.WyrmForager.DisplayName,Wyrm Forager,The Soothesop workshop
+Building.WyrmForager.Description,A workshop that brews Soothesop from foraged berries and a measure of badwater. Soothesop is hauled to Lure Stakes to keep wyrms from chewing through containment walls.,
+Building.WyrmForager.Flavor,The recipe is older than the colony.,
+Building.LureStake.DisplayName,Lure Stake,Soothesop bait holder
+Building.LureStake.Description,A wooden stake that holds a small store of Soothesop. Wyrms within range stop chewing through walls while the stake is stocked. Beavers in range still get eaten.,
+Building.LureStake.Flavor,Place it where you'd rather the wyrm chew the bait than your levee.,
+Building.WyrmDen.DisplayName,Wyrm Den,The wyrm spawner
+Building.WyrmDen.Description,A nest of slumbering wyrms. Wakes when the soil above turns green and continues to spawn wyrms periodically while the cover stays moist. Killed only by dynamite.,
+Building.WyrmDen.Flavor,There is more than one in the dark.,
+WWW.Notification.WyrmEmerged,A wyrm has emerged!,Posted when a husk or den spawns a wyrm
+WWW.Notification.WyrmDied,The wyrm is dead.,Posted when a wyrm is killed by contamination or other means
+WWW.Notification.DenDestroyed,A wyrm den was destroyed.,Posted when an explosion kills a den
+WWW.Wyrm.PoisonedStatus,Poisoned,Status while absorbing badwater contamination

@@ -1,0 +1,48 @@
+{
+  "TemplateSpec": {
+    "TemplateName": "Wyrm.Common",
+    "BackwardCompatibleTemplateNames": [],
+    "RequiredFeatureToggle": "",
+    "DisablingFeatureToggle": ""
+  },
+  "LabeledEntitySpec": {
+    "DisplayNameLocKey": "Creature.Wyrm.DisplayName",
+    "DescriptionLocKey": "Creature.Wyrm.Description",
+    "FlavorDescriptionLocKey": "Creature.Wyrm.Flavor",
+    "Icon": "Buildings/Creatures/Wyrm/WyrmIcon"
+  },
+  "WyrmSpec": {
+    "LethalContamination": 5.0,
+    "DrinkDepthPerDay": 1.0,
+    "ContaminationRegenPerDay": 0.2,
+    "HungerPerDay": 1.0,
+    "HungerMax": 1.0,
+    "WallChewPerDay": 5.0,
+    "WalkSpeed": 1.0,
+    "HuntingThreshhold": 0.6,
+    "MinSpeedMultiplier": 0.2
+  },
+  "Children": {
+    "#Body": {
+      "TimbermeshSpec": {
+        "Model": "Buildings/Creatures/Wyrm/Wyrm.Common.Model"
+      },
+      "CollidersSpec": {
+        "BoxColliders": [],
+        "SphereColliders": [],
+        "CapsuleColliders": [
+          {
+            "Center": {
+              "X": 0.0,
+              "Y": 0.25,
+              "Z": 0.0
+            },
+            "Direction": "ZAxis",
+            "Radius": 0.25,
+            "Height": 1.5
+          }
+        ]
+      }
+    }
+  }
+}
