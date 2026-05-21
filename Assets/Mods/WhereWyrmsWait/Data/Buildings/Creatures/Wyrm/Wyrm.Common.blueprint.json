@@ -19,7 +19,7 @@
     "HungerMax": 1.0,
     "WallChewPerDay": 5.0,
     "WalkSpeed": 1.0,
-    "HuntingThreshhold": 0.6,
+    "HuntingThreshold": 0.6,
     "MinSpeedMultiplier": 0.2
   },
   "Children": {
@@ -37,9 +37,9 @@
               "Y": 0.25,
               "Z": 0.0
             },
-            "Direction": "ZAxis",
             "Radius": 0.25,
-            "Height": 1.5
+            "Height": 1.5,
+            "Axis": "Y"
           }
         ]
       }
