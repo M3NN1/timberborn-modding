@@ -243,6 +243,7 @@ Mods/WhereWyrmsWait/
     └── UI/
         ├── WyrmPanelStyle.cs                     shared inline panel palette
         ├── WyrmHuskFragment.cs                   warmup progress + state label
+        ├── WyrmDenFragment.cs                    warmup + spawn-cooldown + live count
         ├── WyrmFragment.cs                       hunger + contamination bars
         └── LureStakeFragment.cs                  Soothesop stock bar
 ```
@@ -322,9 +323,12 @@ markers rather than rename.
 ## Implemented features (as of v0.9.0)
 
 - ✅ Husk + Den dormancy with cover-depth wake timer
-- ✅ Surface moisture probe (vanilla `ISoilMoistureService`)
-- ✅ Husk entity-panel fragment + procedural emergence-puff visuals
-  on both husks and dens
+- ✅ Surface moisture probe (vanilla `ISoilMoistureService`) — den
+  probes its bottom-layer footprint columns to match the column
+  ceiling exactly, so 2×2×2 dens wake reliably.
+- ✅ Husk + Den entity-panel fragments (warmup status, progress bar;
+  den additionally shows the spawn-cooldown bar and live-wyrm count)
+- ✅ Procedural emergence-puff visuals on both husks and dens
 - ✅ Wyrm spawning via `WyrmFactory` from a creature template blueprint
 - ✅ Wyrm AI: hunt nearest beaver via `INavigationService`, eat on
   contact
@@ -336,7 +340,7 @@ markers rather than rename.
 - ✅ Lure Stake placeable with hauler delivery via vanilla
   `PublicInput`
 - ✅ Wyrm Den dynamite kill via `ExplosionService.TilesExplosion`
-- ✅ Entity-panel fragments for husk / wyrm / lure stake
+- ✅ Entity-panel fragments for husk / den / wyrm / lure stake
 - ✅ eMka settings panel (master switch, wake speed, hunger,
   contamination resistance, sandbox mode)
 - ✅ Save/load round-trip on every persistent component
@@ -344,9 +348,7 @@ markers rather than rename.
 ## Not implemented (deliberate gaps for later phases)
 
 - ❌ **Mod-owned floating-icon sprites** for wyrm status (still using
-  vanilla sprite IDs as placeholders).
-- ❌ **Wyrm Den entity-panel fragment.** Dens currently selectable but
-  show no mod-specific UI; husks and wyrms do.
+  vanilla sprite IDs as placeholders). Last v1.0 ship-blocker.
 - ❌ Map-preview integration, multi-language localization beyond
   English, faction-themed wyrm variants. All explicitly out of v1
   scope.

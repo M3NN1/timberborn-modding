@@ -33,6 +33,7 @@ namespace Mods.WhereWyrmsWait.Configuration
             Bind<LureStakeInventoryInitializer>().AsSingleton();
 
             Bind<WyrmHuskFragment>().AsSingleton();
+            Bind<WyrmDenFragment>().AsSingleton();
             Bind<WyrmFragment>().AsSingleton();
             Bind<LureStakeFragment>().AsSingleton();
             MultiBind<EntityPanelModule>().ToProvider<EntityPanelProvider>().AsSingleton();
@@ -126,15 +127,18 @@ namespace Mods.WhereWyrmsWait.Configuration
     internal class EntityPanelProvider : IProvider<EntityPanelModule>
     {
         private readonly WyrmHuskFragment _husk;
+        private readonly WyrmDenFragment _den;
         private readonly WyrmFragment _wyrm;
         private readonly LureStakeFragment _lure;
 
         public EntityPanelProvider(
             WyrmHuskFragment husk,
+            WyrmDenFragment den,
             WyrmFragment wyrm,
             LureStakeFragment lure)
         {
             _husk = husk;
+            _den = den;
             _wyrm = wyrm;
             _lure = lure;
         }
@@ -143,6 +147,7 @@ namespace Mods.WhereWyrmsWait.Configuration
         {
             var builder = new EntityPanelModule.Builder();
             builder.AddMiddleFragment(_husk);
+            builder.AddMiddleFragment(_den);
             builder.AddMiddleFragment(_wyrm);
             builder.AddMiddleFragment(_lure);
             return builder.Build();

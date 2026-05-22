@@ -60,12 +60,25 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         // Air cells one tile above the den's top layer, one per X/Y
         // column the den occupies. Populated alongside _ownTiles in
-        // CacheOwnTiles. Used by the surface-moisture probe, cover-depth
-        // calculation, and emergence picker, which all need to reason
-        // about "what's covering the den" rather than the den's own
-        // cells. For a 1×1×1 den this is a single cell; for a 2×2×2 den
-        // it's four cells (the four top columns).
+        // CacheOwnTiles. Used by the cover-depth calculation and the
+        // emergence picker, which both need to reason about "what's
+        // covering the den" rather than the den's own cells. For a
+        // 1×1×1 den this is a single cell; for a 2×2×2 den it's four
+        // cells (the four top columns).
         private readonly List<Vector3Int> _topCells = new List<Vector3Int>();
+
+        // Bottom-layer cells of the den, one per X/Y footprint column,
+        // at z = CoordinatesAtBaseZ.z. These are what the surface-
+        // moisture probe needs: ISoilMoistureService.SoilIsMoist
+        // requires coordinates.z == natural-ground column Ceiling, and
+        // for a den placed on the surface that ceiling is exactly the
+        // den's base-Z layer. The husk gets away with passing its own
+        // single coordinate because Size.z == 1 makes it coincide with
+        // the ceiling; for a 2×2×2 den, _topCells sit two voxels above
+        // the ceiling and never match, which is why the den would
+        // otherwise never wake. Mirrors the husk's probe behaviour,
+        // just fanned over the footprint columns.
+        private readonly List<Vector3Int> _bottomCells = new List<Vector3Int>();
 
         // Wyrms attributed to this den: maintained via owner-stamping
         // rather than radius probing. WyrmFactory tags each new wyrm
@@ -306,6 +319,7 @@ namespace Mods.WhereWyrmsWait.Hazards
         {
             _ownTiles.Clear();
             _topCells.Clear();
+            _bottomCells.Clear();
             // Probe-cells cache is rebuilt lazily off _topCells; reset it
             // here so the next read picks up the fresh layout.
             _probeCellsCache = null;
@@ -316,28 +330,33 @@ namespace Mods.WhereWyrmsWait.Hazards
             }
             // Resolve the den's top-layer cells: the (X, Y) columns the
             // den covers, each at the topmost own-Z + 1. These are the
-            // "above-the-den" air/cover cells we use for surface-moisture
-            // probes, cover-depth measurements and emergence picks. For
-            // a 1×1×1 den this collapses to exactly one cell directly
-            // above; for the shipped 2×2×2 den it produces 2×2 = 4
-            // cells. The picker / probes then iterate them.
+            // "above-the-den" air/cover cells we use for cover-depth
+            // measurements and emergence picks. For a 1×1×1 den this
+            // collapses to exactly one cell directly above; for the
+            // shipped 2×2×2 den it produces 2×2 = 4 cells. The picker /
+            // probes then iterate them.
+            //
+            // _bottomCells covers the same (X, Y) columns at the den's
+            // base-Z. SoilIsMoist's ceiling check matches against the
+            // natural-ground ceiling, which for a den placed on the
+            // surface is exactly the den's base-Z layer.
             if (_ownTiles.Count == 0) return;
             int maxOwnZ = int.MinValue;
+            int minOwnZ = int.MaxValue;
             foreach (var coord in _ownTiles)
             {
                 if (coord.z > maxOwnZ) maxOwnZ = coord.z;
+                if (coord.z < minOwnZ) minOwnZ = coord.z;
             }
-            var topColumns = new HashSet<Vector2Int>();
+            var columns = new HashSet<Vector2Int>();
             foreach (var coord in _ownTiles)
             {
-                if (coord.z == maxOwnZ)
-                {
-                    topColumns.Add(new Vector2Int(coord.x, coord.y));
-                }
+                columns.Add(new Vector2Int(coord.x, coord.y));
             }
-            foreach (var col in topColumns)
+            foreach (var col in columns)
             {
                 _topCells.Add(new Vector3Int(col.x, col.y, maxOwnZ + 1));
+                _bottomCells.Add(new Vector3Int(col.x, col.y, minOwnZ));
             }
         }
 
@@ -354,18 +373,21 @@ namespace Mods.WhereWyrmsWait.Hazards
             try
             {
                 // Multi-block den: any of the four (or one, for a 1×1
-                // legacy den) top-cell columns going green wakes the
-                // den. SoilMoistureService snaps to the column ceiling
-                // tile internally, so we can pass any cell inside the
-                // column. Fan over the top cells rather than just
-                // _blockObject.CoordinatesAtBaseZ — the latter only
-                // covers the SW corner column for a multi-block den.
-                if (_topCells.Count == 0)
+                // legacy den) footprint columns going green wakes the
+                // den. SoilMoistureService.SoilIsMoist requires the
+                // probe coordinate's Z to equal the natural-ground
+                // column ceiling — for a den placed on the surface
+                // that ceiling is the den's base-Z layer, so we probe
+                // _bottomCells, not _topCells. (Probing _topCells is
+                // the bug the husk got away with by being 1 voxel
+                // tall: there, "above the husk" and "ground ceiling"
+                // coincide. For a 2×2×2 den they don't.)
+                if (_bottomCells.Count == 0)
                 {
                     return _soilMoistureService.SoilIsMoist(
                         _blockObject.CoordinatesAtBaseZ);
                 }
-                foreach (var cell in _topCells)
+                foreach (var cell in _bottomCells)
                 {
                     if (_soilMoistureService.SoilIsMoist(cell))
                     {

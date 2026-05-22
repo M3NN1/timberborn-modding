@@ -15,6 +15,9 @@ Building.WyrmHusk.Description,The dried husk of a slumbering wyrm. Wakes when th
 Building.WyrmHusk.Flavor,The earth remembers what slept beneath it.,
 WWW.Husk.WarmingStatus,Stirring,Status while warming up
 WWW.Husk.DormantStatus,Dormant,Status while inert
+WWW.Den.ActiveStatus,Active,Status once warmed up and spawning on cooldown
+WWW.Den.CooldownLabel,Next spawn in,Cooldown progress label
+WWW.Den.LiveCountLabel,Live wyrms,Live attributed wyrm count label
 Creature.Wyrm.DisplayName,Wyrm,The active predator
 Creature.Wyrm.Description,"A starved, ancient predator that emerged from the soil. It hunts beavers and chews through unfortified walls. Cannot be cured of badwater contamination.",
 Creature.Wyrm.Flavor,The earth gives back what it kept.,
