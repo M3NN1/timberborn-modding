@@ -3,6 +3,7 @@
     "Id": "Soothesop",
     "DisplayLocKey": "Recipe.Soothesop.DisplayName",
     "CycleDurationInHours": 4,
+    "CyclesCapacity": 5,
     "Ingredients": [
       {
         "Id": "Berries",

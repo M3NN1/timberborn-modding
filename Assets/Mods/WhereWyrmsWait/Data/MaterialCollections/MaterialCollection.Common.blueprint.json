@@ -2,9 +2,10 @@
   "MaterialCollectionSpec": {
     "CollectionId": "Common",
     "Materials#append": [
-        "Buildings/Creatures/Wyrm/Wyrm_Base",
-        "Buildings/Hazards/WyrmHusk/WyrmHusk_Base",
-        "Buildings/Hazards/WyrmDen/WyrmDen_Base"
+      "Buildings/Creatures/Wyrm/Wyrm_Base",
+      "Buildings/Hazards/WyrmHusk/WyrmHusk_Base",
+      "Buildings/Hazards/WyrmDen/WyrmDen_Base",
+      "Buildings/Tools/LureStake/Bait_Berry"
     ]
   }
 }

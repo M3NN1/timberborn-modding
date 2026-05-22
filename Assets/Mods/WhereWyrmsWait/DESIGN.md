@@ -15,21 +15,23 @@ danger.
 
 ## High-level mechanics
 
-- Map authors place **Wyrm Husk** (single dormant) and **Wyrm Den**
-  (periodic spawner) tiles anywhere on the map at any 3D coordinate.
-- A husk/den wakes when the topmost natural-ground tile of its column
-  has positive moisture (vanilla green/grass signal).
+- Map authors place **Wyrm Husk** (single dormant, 1×1×1) and
+  **Wyrm Den** (periodic spawner, 2×2×2) tiles anywhere on the map at
+  any 3D coordinate.
+- A husk/den wakes when the topmost natural-ground tile of any of its
+  footprint columns has positive moisture (vanilla green/grass signal).
 - Wake timer = `BaseWarmupDays + DaysPerCoverBlock × cover_depth`
   in-game days. Defaults: 0.5 + 3 × depth. No hard cap — map authors
   choose the depth, the global Wake Speed setting (50–200%) scales for
   difficulty.
 - If the surface goes brown before the timer expires, the timer resets
   to zero. Same depth → same timer next attempt.
-- After warmup, a **Wyrm** emerges at the topmost surface tile of the
-  husk's column. If that tile is occupied (e.g. by a building), the
-  picker spirals outward up to `EmergenceShiftRadius` tiles for an
-  open surface tile; if none found, the wake is suppressed for that
-  cycle.
+- After warmup, a **Wyrm** emerges at the topmost surface tile of one
+  of the husk/den's footprint columns. If that tile is occupied
+  (e.g. by a building), the picker spirals outward up to
+  `EmergenceShiftRadius` tiles for an open surface tile; a 2×2×2 den
+  also tries each of its four top columns in turn before giving up.
+  If no column resolves, the wake is suppressed for that cycle.
 - Active wyrms hunt beavers via vanilla `INavigationService`, eating
   them on contact. A kill notification is posted.
 - Wyrms inherit beaver navigation rules for free: ≤1 step climb,
@@ -132,13 +134,12 @@ by map authors). Settings-panel multipliers stack on top.
 | Days per cover block | 3 | `WyrmHuskSpec.DaysPerCoverBlock` | linear depth scaling |
 | Emergence shift radius | 2 | `WyrmHuskSpec.EmergenceShiftRadius` | tiles |
 | Den spawn cooldown | 6 days | `WyrmDenSpec.DaysBetweenSpawns` | between spawns |
-| Den live-wyrm cap | 3 | `WyrmDenSpec.MaxLiveWyrms` | per-den ceiling |
-| Den tracking radius | 24 | `WyrmDenSpec.SpawnTrackingRadius` | wyrms outside don't count |
+| Den live-wyrm cap | 3 | `WyrmDenSpec.MaxLiveWyrms` | per-den ceiling, owner-tracked |
 | Drink depth / day | 1.0 | `WyrmSpec.DrinkDepthPerDay` | water-depth units, pure badwater |
 | Lethal contamination | 5.0 | `WyrmSpec.LethalContamination` | depth-units; ~5 days pure badwater |
 | Contamination regen / day | 0.2 | `WyrmSpec.ContaminationRegenPerDay` | when not drinking |
 | Hunger per day | 1.0 | `WyrmSpec.HungerPerDay` | scaled by settings |
-| Wall chew per day | 5 HP | `WyrmSpec.WallChewPerDay` | hungry only |
+| Wall chew duration | 1.5 days | `WyrmSpec.BlockChewDays` | per block, hungry only |
 | Walk speed | 1.0 u/s | `WyrmSpec.WalkSpeed` | slower than beavers |
 | Lure Stake capacity | 5 | `LureStakeSpec.Capacity` | Soothesop units |
 | Satiate radius | 3 | `LureStakeSpec.SatiateRadius` | tiles |
@@ -205,8 +206,9 @@ Mods/WhereWyrmsWait/
 └── Scripts/
     ├── Configuration/
     │   ├── WyrmsModStarter.cs                    IModStarter
-    │   └── WyrmsConfigurator.cs                  Bindito wiring + decorators
-    │                                              + WyrmsSettingsConfigurator
+    │   ├── WyrmsConfigurator.cs                  Bindito wiring + decorators
+    │   │                                          + WyrmsSettingsConfigurator
+    │   └── WyrmsDiagnosticsConfigurator.cs       LogOnce / debug-only bindings
     ├── Core/
     │   ├── WyrmSettings.cs                       eMka ModSettingsOwner
     │   ├── WyrmRegistry.cs                       live-wyrm set + add/remove events
@@ -219,50 +221,78 @@ Mods/WhereWyrmsWait/
     │   ├── WyrmDenSpec.cs                        per-den tunables
     │   ├── WyrmDen.cs                            den state machine + dynamite kill
     │   ├── WyrmEmergencePicker.cs                emergence-tile shift logic
-    │   └── HuskPlaceholderVisual.cs              procedural surface mound
+    │   └── HazardEmergenceVisual.cs              warmup-puff particles on the surface
     ├── Wyrm/
     │   ├── WyrmSpec.cs                           creature-template tunables
     │   ├── WyrmComponent.cs                      hunger / contamination / save
     │   ├── WyrmFactory.cs                        spawns wyrms from the template
     │   ├── WyrmMovement.cs                       INavigationService-based walker
     │   ├── WyrmHunter.cs                         retarget + eat-on-contact
+    │   ├── WyrmWanderer.cs                       random-walk fallback when not hunting
     │   ├── WyrmContaminationSampler.cs           per-tick water-drink driver
     │   ├── WyrmSatiationDetector.cs              per-tick lure-stake probe + drain
     │   ├── WyrmWallEater.cs                      stuck-while-hungry chew loop
     │   ├── WyrmStatusIndicator.cs                floating sated/hunting/poisoned icon
-    │   └── WyrmPlaceholderVisual.cs              procedural capsule body
+    │   └── WyrmEmergenceDirtEffect.cs            sustained dirt burst on spawn
     ├── Lure/
     │   ├── LureStakeSpec.cs                      capacity / radius / consumption
     │   ├── LureStake.cs                          inventory facade + drain helper
     │   ├── LureStakeRegistry.cs                  set lookup for wyrms in range
-    │   └── LureStakeInventoryInitializer.cs      dedicated decorator wiring
+    │   ├── LureStakeInventoryInitializer.cs      dedicated decorator wiring
+    │   └── LureStakeBaitVisual.cs                stock-tier bait sub-mesh switcher
     └── UI/
+        ├── WyrmPanelStyle.cs                     shared inline panel palette
         ├── WyrmHuskFragment.cs                   warmup progress + state label
         ├── WyrmFragment.cs                       hunger + contamination bars
         └── LureStakeFragment.cs                  Soothesop stock bar
 ```
 
-## Visual assets — placeholder-now, real-later
+## Visual assets
 
-The mod ships **no `.timbermesh` files yet**. Husks/dens/forager/lure
-stakes appear as missing-mesh placeholders in-game (typically
-untextured cubes). Wyrm bodies are rendered as a chain of three Unity
-capsule primitives spawned at runtime by `WyrmPlaceholderVisual`. Husk
-surface mounds are runtime-generated cylinders that scale with warmup
-progress.
+The mod ships finished `.timbermesh` files and icons for all
+buildings and the wyrm itself:
 
-There is no AssetBundle ship pipeline yet — placeholder visuals are
-plain Unity primitives wrapped in code-loaded fallback materials
-(`Standard`/URP `Lit`/`Sprites/Default`). All gameplay logic runs
-without art.
+```
+Data/Buildings/Hazards/WyrmHusk/WyrmHusk.Common.Model.timbermesh
+Data/Buildings/Hazards/WyrmDen/WyrmDen.Common.Model.timbermesh
+Data/Buildings/Production/WyrmForager/WyrmForager.Common.Model.timbermesh
+Data/Buildings/Tools/LureStake/LureStake.Common.Model.timbermesh
+Data/Buildings/Creatures/Wyrm/Wyrm.Common.Model.timbermesh
+```
+
+with matching icons (`WyrmHuskIcon.png`, `WyrmDenIcon.png`,
+`WyrmForagerIcon.png`, `LureStakeIcon.png`, `WyrmIcon.png`) and the
+Soothesop good icon under `Data/Sprites/Goods/`.
+
+Procedural visuals on top of the meshes:
+
+- `HazardEmergenceVisual` — particle puffs on a husk/den's emergence
+  tile that intensify with `WarmupFraction`; cadence-and-size scale
+  from a slow trickle below 5 % to a constant cloud above 95 %.
+- `WyrmEmergenceDirtEffect` — sustained dirt eruption around the wyrm
+  for ~2.5 s after spawn; shares its procedural soft-dot texture with
+  the hazard puffs via `WyrmEmergenceDirtEffect.GetSharedDirtMaterial`.
+- `LureStakeBaitVisual` — toggles three bait sub-meshes
+  (`Bait_Low`/`Bait_Mid`/`Bait_Full`, declared as `#Finished.Children`
+  in the blueprint) based on Soothesop stock fraction.
+
+There is an AssetBundle pipeline under `AssetBundles/Resources/`
+shipping the per-blueprint materials (`Wyrm_Base.mat`,
+`WyrmHusk_Base.mat`, `WyrmDen_Base.mat`); procedural particle effects
+fall back to `Sprites/Default` / `Particles/Standard Unlit` /
+`Universal Render Pipeline/Particles/Unlit` so they work without a
+project-specific shader.
 
 The replacement workflow (sculpt → export `.timbermesh` → drop into
-`Data/`) is documented in `Placeholders/README.md`.
+`Data/`) is documented in `Placeholders/README.md` for future model
+revisions and the bait sub-meshes.
 
 The `WyrmStatusIndicator` reuses three vanilla status sprite IDs
 (`LackOfResources`, `GenericError`, `BuildingBlockedByContamination`)
-as placeholders for the floating sated/hunting/poisoned icons. This
-is a v1.0 ship-blocker — real mod-owned sprites should replace them
+as placeholders for the entity-panel status icons. These show in the
+panel's status row only (no floating world-space icon — we use
+`CreateNormalStatus`, not the `…WithFloatingIcon` variants). This is a
+v1.0 ship-blocker — real mod-owned sprites should replace them
 before tagging.
 
 ## Save / load
@@ -289,11 +319,12 @@ fair game until v1.0. After v1.0, ComponentKey strings will be frozen
 and future versions will add new keys with `BackwardCompatible`
 markers rather than rename.
 
-## Implemented features (as of v0.8.0)
+## Implemented features (as of v0.9.0)
 
 - ✅ Husk + Den dormancy with cover-depth wake timer
 - ✅ Surface moisture probe (vanilla `ISoilMoistureService`)
-- ✅ Husk/den entity-panel fragment + procedural surface mound
+- ✅ Husk entity-panel fragment + procedural emergence-puff visuals
+  on both husks and dens
 - ✅ Wyrm spawning via `WyrmFactory` from a creature template blueprint
 - ✅ Wyrm AI: hunt nearest beaver via `INavigationService`, eat on
   contact
@@ -312,8 +343,8 @@ markers rather than rename.
 
 ## Not implemented (deliberate gaps for later phases)
 
-- ❌ **Real `.timbermesh` art** (see `Placeholders/README.md`).
-- ❌ **Mod-owned floating-icon sprites** for wyrm status.
+- ❌ **Mod-owned floating-icon sprites** for wyrm status (still using
+  vanilla sprite IDs as placeholders).
 - ❌ **Wyrm Den entity-panel fragment.** Dens currently selectable but
   show no mod-specific UI; husks and wyrms do.
 - ❌ Map-preview integration, multi-language localization beyond

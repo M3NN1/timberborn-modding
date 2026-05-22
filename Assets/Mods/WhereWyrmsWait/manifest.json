@@ -1,6 +1,6 @@
 {
-  "Name": "Where Wyrms Wait",
-  "Version": "0.8.0",
+  "Name": "Where Wyrms Wait [ModContest1]",
+  "Version": "0.9.0",
   "Id": "M3NN1.WhereWyrmsWait",
   "MinimumGameVersion": "1.0.0.0",
   "Description": "Map authors place dormant wyrms anywhere on the map. They wake when long-irrigated land covers them, hunt and eat beavers, and can only be killed by sustained badwater contamination or vanilla dynamite (for dens).",

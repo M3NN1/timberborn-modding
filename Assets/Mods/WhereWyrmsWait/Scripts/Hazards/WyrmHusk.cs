@@ -14,58 +14,24 @@ using UnityEngine;
 namespace Mods.WhereWyrmsWait.Hazards
 {
     /// <summary>
-    /// Per-husk dormancy ticker. Sits on a placed-by-map-author block and
-    /// drives the Dormant → Warming → Emerging state machine described in
-    /// DESIGN.md. On wake, asks <see cref="WyrmFactory"/> to spawn a Wyrm
-    /// at the emergence tile and self-deletes.
-    /// <para>
-    /// Wake rule: the topmost natural-ground tile of the husk's column has
-    /// positive soil moisture (vanilla green/grass signal). Cover depth is
-    /// derived from <see cref="ITerrainService.GetTerrainHeight"/>, which
-    /// ignores buildings and returns the tile index of the topmost natural
-    /// terrain. Warmup days = <c>BaseWarmupDays + DaysPerCoverBlock × depth</c>,
-    /// scaled by the global wake-speed multiplier from
-    /// <see cref="WyrmSettings"/>. No hard cap — map authors choose the
-    /// depth, the global multiplier handles difficulty scaling.
-    /// </para>
-    /// <para>
-    /// If the surface goes dry mid-warmup, the timer resets to zero (per
-    /// the design: "same depth, same timer"). If a drought hits and the
-    /// surface goes brown for any reason, same effect.
-    /// </para>
-    /// <para>
-    /// Lifecycle ordering note: the engine's per-entity flow is
-    /// <c>Awake → IPersistentEntity.Load → IInitializableEntity.InitializeEntity
-    /// → IPostInitializableEntity.PostInitializeEntity → IPostLoadableEntity.PostLoadEntity
-    /// → IStartableComponent.Start (calls TickableComponent.StartTickable)</c>.
-    /// We resolve <c>_spec</c> and <c>_blockObject</c> in
-    /// <see cref="InitializeEntity"/> so the entity-panel fragment can read
-    /// <see cref="WarmupFraction"/> right after load — earlier is fine because
-    /// <see cref="Load"/> only writes a primitive field. <see cref="StartTickable"/>
-    /// is kept as a defensive fallback in case the engine's lifecycle skips
-    /// the initialization phase for an unparented prefab.
-    /// </para>
-    /// <para>
-    /// Recompute cadence: terrain and moisture change at human pace. We
-    /// resample once every <see cref="SurfaceRecomputeEveryTicks"/> ticks
-    /// rather than every tick — same trick DDD's <c>DamDeterioration</c>
-    /// uses for water depth. Warmup itself accumulates every tick using the
-    /// engine's per-tick delta.
-    /// </para>
+    /// Per-husk dormancy ticker. Wakes when the topmost natural-ground
+    /// tile of the husk's column has positive soil moisture; resets the
+    /// warmup timer to zero when the surface goes brown. Warmup target
+    /// = <c>BaseWarmupDays + DaysPerCoverBlock × CoverDepth</c>, scaled
+    /// by the global wake-speed multiplier. On wake, asks
+    /// <see cref="WyrmFactory"/> to spawn a Wyrm and self-deletes.
     /// </summary>
     public class WyrmHusk : TickableComponent,
         IInitializableEntity, IPersistentEntity, IDeletableEntity, IWyrmHazard
     {
-        // Save keys.
         private static readonly ComponentKey SaveKey = new ComponentKey("WyrmHusk");
         private static readonly PropertyKey<float> WarmupDaysKey =
             new PropertyKey<float>("WarmupDays");
 
-        // Recompute "is the surface above me green?" every N ticks. At ~10
-        // ticks/sec and human-pace irrigation, 16 is far more than enough.
+        // Surface moisture changes at human pace; resampling every 16
+        // ticks (~1.5s game) is plenty.
         private const int SurfaceRecomputeEveryTicks = 16;
 
-        // Injected.
         private readonly ITerrainService _terrainService;
         private readonly IBlockService _blockService;
         private readonly ISoilMoistureService _soilMoistureService;
@@ -76,11 +42,9 @@ namespace Mods.WhereWyrmsWait.Hazards
         private readonly WyrmEmergencePicker _emergencePicker;
         private readonly WyrmNotifications _notifications;
 
-        // Resolved on Awake.
         private WyrmHuskSpec _spec;
         private BlockObject _blockObject;
 
-        // Runtime state.
         private float _warmupDays;
         private bool _surfaceIsGreen;
         private int _ticksSinceSurfaceRecompute = SurfaceRecomputeEveryTicks;
@@ -107,7 +71,6 @@ namespace Mods.WhereWyrmsWait.Hazards
             _notifications = notifications;
         }
 
-        // Public API used by the entity-panel fragment.
         public float WarmupDays => _warmupDays;
         public float WarmupTargetDays => ComputeWarmupTargetDays();
         public float WarmupFraction =>
@@ -116,25 +79,42 @@ namespace Mods.WhereWyrmsWait.Hazards
         public int CoverDepth => ComputeCoverDepth();
         public WyrmHuskSpec Spec => _spec;
 
-        // -------- lifecycle --------
+        // Single-cell husk: probe origin is the husk's own coordinate.
+        // Cached as a 1-entry array so callers iterate without allocs.
+        private Vector3Int[] _probeCellsCache;
+        public System.Collections.Generic.IReadOnlyList<Vector3Int>
+            EmergenceProbeCells
+        {
+            get
+            {
+                if (_blockObject == null)
+                {
+                    return System.Array.Empty<Vector3Int>();
+                }
+                if (_probeCellsCache == null
+                    || _probeCellsCache[0] != _blockObject.Coordinates)
+                {
+                    _probeCellsCache = new[] { _blockObject.Coordinates };
+                }
+                return _probeCellsCache;
+            }
+        }
 
         public void InitializeEntity()
         {
-            // Resolve spec + block object up front. The engine guarantees
-            // Load() runs before InitializeEntity(), so by here the
-            // _warmupDays primitive is already populated. Resolving here
-            // means the entity panel can read WarmupFraction right after
-            // load without dividing by Infinity.
+            // Resolve here so the entity-panel fragment can read
+            // WarmupFraction right after load without dividing by ∞.
+            // The engine runs Load before InitializeEntity, so by here
+            // _warmupDays is already populated from the save.
             _spec = GetComponent<WyrmHuskSpec>();
             _blockObject = GetComponent<BlockObject>();
-            // Force a fresh surface read on the first tick.
             _ticksSinceSurfaceRecompute = SurfaceRecomputeEveryTicks;
         }
 
         public override void StartTickable()
         {
-            // Defensive: an unparented prefab (e.g. test harness) may skip
-            // the IInitializableEntity phase. Resolve here too.
+            // Defensive: an unparented prefab (test harness) may skip
+            // the IInitializableEntity phase.
             if (_spec == null) _spec = GetComponent<WyrmHuskSpec>();
             if (_blockObject == null) _blockObject = GetComponent<BlockObject>();
             _ticksSinceSurfaceRecompute = SurfaceRecomputeEveryTicks;
@@ -142,17 +122,14 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         public override void Tick()
         {
-            if (!_settings.ModEnabled || _spec == null || _blockObject == null)
-            {
-                return;
-            }
+            if (!_settings.ModEnabled || _spec == null || _blockObject == null) return;
 
             RecomputeSurfaceIfDue();
 
             if (!_surfaceIsGreen)
             {
-                // Brown surface = reset warmup. Same depth, same timer
-                // next time, per design.
+                // Brown surface = reset warmup. Same depth means same
+                // timer next time, per design.
                 if (_warmupDays > 0f)
                 {
                     _warmupDays = 0f;
@@ -163,8 +140,7 @@ namespace Mods.WhereWyrmsWait.Hazards
             float deltaDays = _dayNightCycle.FixedDeltaTimeInHours / 24f;
             _warmupDays += deltaDays * _settings.WakeSpeedMultiplier;
 
-            float target = ComputeWarmupTargetDays();
-            if (_warmupDays >= target)
+            if (_warmupDays >= ComputeWarmupTargetDays())
             {
                 Emerge();
             }
@@ -186,35 +162,24 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         public void DeleteEntity()
         {
-            // The husk is not registered anywhere, so there's nothing to
-            // unregister. Method exists only to satisfy IDeletableEntity.
+            // Husk doesn't register anywhere — interface satisfaction only.
         }
-
-        // -------- internals --------
 
         private void RecomputeSurfaceIfDue()
         {
-            if (_ticksSinceSurfaceRecompute++ < SurfaceRecomputeEveryTicks)
-            {
-                return;
-            }
+            if (_ticksSinceSurfaceRecompute++ < SurfaceRecomputeEveryTicks) return;
             _ticksSinceSurfaceRecompute = 0;
             _surfaceIsGreen = ProbeSurfaceMoisture();
         }
 
         private bool ProbeSurfaceMoisture()
         {
-            if (_blockObject == null)
-            {
-                return false;
-            }
+            if (_blockObject == null) return false;
             try
             {
-                // SoilMoistureService.SoilIsMoist snaps to the column ceiling
-                // tile internally (see TryGetIndexAtCeiling), so we can pass
-                // any coordinate inside the husk's column and it resolves to
-                // the topmost natural-ground tile. Same pattern vanilla
-                // DryObject uses with CoordinatesAtBaseZ.
+                // SoilIsMoist snaps to the column ceiling internally,
+                // so any coordinate in the husk's column resolves to
+                // the topmost natural-ground tile.
                 return _soilMoistureService.SoilIsMoist(
                     _blockObject.CoordinatesAtBaseZ);
             }
@@ -229,33 +194,25 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         private int ComputeCoverDepth()
         {
-            if (_blockObject == null)
-            {
-                return 0;
-            }
+            if (_blockObject == null) return 0;
             try
             {
-                // Find the column's actual surface by querying the
-                // terrain service from a cell above the entire terrain
-                // grid. Querying from the husk's own cell (or any cell
-                // inside the husk's column that isn't a terrain voxel)
-                // makes GetTerrainHeight walk *downward* to find the
-                // nearest terrain, which yields the wrong answer for our
-                // case — the husk lives in a non-terrain cell sandwiched
-                // between soil below and soil above.
+                // Probe from a cell above the entire terrain grid.
+                // Probing from inside the husk's column would make
+                // GetTerrainHeight walk downward and return the wrong
+                // answer for a husk sandwiched between soil layers.
                 var coords = _blockObject.Coordinates;
                 int aboveAll = _terrainService.MaxTerrainHeight + 1;
                 int surfaceZ = _terrainService.GetTerrainHeight(
                     new Vector3Int(coords.x, coords.y, aboveAll));
                 // surfaceZ is the empty cell above the topmost terrain
-                // voxel in this column. Cover blocks above the husk:
-                // surfaceZ - 1 - huskZ (terrain voxels at huskZ+1..surfaceZ-1).
+                // voxel; natural cover is the voxels between huskZ+1
+                // and surfaceZ-1.
                 int naturalCover = Mathf.Max(0, surfaceZ - 1 - coords.z);
 
-                // Add any block-objects (placed levees, soil cubes, etc.)
-                // sitting in cells above the husk that aren't natural
-                // terrain. Walk up from huskZ+1 and count consecutive
-                // filled cells; stop at the first fully-empty cell.
+                // Block-objects (levees, soil cubes) above the natural
+                // surface also count as cover. Walk up from the surface
+                // and count consecutive filled cells.
                 int blockObjectCover = 0;
                 int z = Mathf.Max(coords.z + 1, surfaceZ);
                 int ceiling = z + 64;
@@ -276,10 +233,7 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         private float ComputeWarmupTargetDays()
         {
-            if (_spec == null)
-            {
-                return float.PositiveInfinity;
-            }
+            if (_spec == null) return float.PositiveInfinity;
             return _spec.BaseWarmupDays + _spec.DaysPerCoverBlock * CoverDepth;
         }
 
@@ -296,10 +250,8 @@ namespace Mods.WhereWyrmsWait.Hazards
                 return;
             }
 
-            // Convert grid coordinate to world position. Timberborn uses
-            // X/Y as horizontal, Z as height; Unity uses X/Z horizontal,
-            // Y up. We add +0.5 horizontally so the wyrm sits in the cell
-            // centre rather than at the corner.
+            // Grid (X, Y, Z=height) → Unity (X, Z=Y, Y=Z); +0.5 centres
+            // the spawn in the cell.
             var worldPos = new Vector3(
                 emergenceCell.x + 0.5f,
                 emergenceCell.z,
@@ -308,11 +260,9 @@ namespace Mods.WhereWyrmsWait.Hazards
             var wyrm = _wyrmFactory.Spawn(worldPos);
             if (wyrm == null)
             {
-                // Don't delete the husk if no wyrm could be spawned (template
-                // missing, spawning blocked, etc.). Reset the warmup so the
-                // husk re-tries on the next cycle. Otherwise a config issue
-                // would silently consume every husk on the map without ever
-                // producing a wyrm.
+                // Preserve the husk and reset for retry — a config issue
+                // would otherwise silently burn through every husk on
+                // the map without ever spawning a wyrm.
                 Debug.LogWarning(
                     $"[WhereWyrmsWait] Husk at {_blockObject.Coordinates} reached " +
                     "warmup but no wyrm could be spawned (template missing or " +
@@ -327,8 +277,7 @@ namespace Mods.WhereWyrmsWait.Hazards
                 $"Wyrm spawned at {emergenceCell}.");
             _notifications.Post(WyrmNotifications.WyrmEmergedKey, wyrm);
 
-            // Husk is consumed only after a successful spawn — design says
-            // one wyrm per husk, gone after waking.
+            // One wyrm per husk; consume after the successful spawn.
             _entityService.Delete(this);
         }
     }

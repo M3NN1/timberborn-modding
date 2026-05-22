@@ -1,4 +1,5 @@
 using System.Linq;
+using Mods.WhereWyrmsWait.Hazards;
 using Timberborn.BlueprintSystem;
 using Timberborn.EntitySystem;
 using Timberborn.SingletonSystem;
@@ -71,10 +72,20 @@ namespace Mods.WhereWyrmsWait.Wyrm
         /// </summary>
         public WyrmComponent Spawn(Vector3 position)
         {
-            return Spawn(position, Quaternion.identity);
+            return Spawn(position, Quaternion.identity, owner: null);
         }
 
         public WyrmComponent Spawn(Vector3 position, Quaternion rotation)
+        {
+            return Spawn(position, rotation, owner: null);
+        }
+
+        /// <summary>
+        /// Instantiate a Wyrm and stamp it with its owning den so the
+        /// den's spawn cap can re-attribute it after save/load. Pass
+        /// <c>null</c> for husk-spawned wyrms.
+        /// </summary>
+        public WyrmComponent Spawn(Vector3 position, Quaternion rotation, WyrmDen owner)
         {
             if (_wyrmTemplate == null)
             {
@@ -82,7 +93,12 @@ namespace Mods.WhereWyrmsWait.Wyrm
             }
             var entity = _entityService.Instantiate(_wyrmTemplate);
             entity.Transform.SetPositionAndRotation(position, rotation);
-            return entity.GetComponent<WyrmComponent>();
+            var wyrm = entity.GetComponent<WyrmComponent>();
+            if (wyrm != null && owner != null)
+            {
+                wyrm.SetOwningDen(owner);
+            }
+            return wyrm;
         }
     }
 }

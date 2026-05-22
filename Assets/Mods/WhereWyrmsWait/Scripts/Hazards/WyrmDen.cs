@@ -30,7 +30,7 @@ namespace Mods.WhereWyrmsWait.Hazards
     /// </para>
     /// </summary>
     public class WyrmDen : TickableComponent,
-        IInitializableEntity, IPersistentEntity, IDeletableEntity, IWyrmHazard
+        IInitializableEntity, IPostInitializableEntity, IPersistentEntity, IDeletableEntity, IWyrmHazard
     {
         private static readonly ComponentKey SaveKey = new ComponentKey("WyrmDen");
         private static readonly PropertyKey<float> WarmupDaysKey =
@@ -58,17 +58,22 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         private readonly HashSet<Vector3Int> _ownTiles = new HashSet<Vector3Int>();
 
-        // Wyrms attributed to this den. Maintained incrementally via
-        // WyrmRegistry's WyrmRegistered/WyrmUnregistered events plus per-tick
-        // boundary checks for wanderers crossing in/out of the tracking
-        // radius — far cheaper than re-scanning the global registry every
-        // tick at scale.
-        private readonly HashSet<WyrmComponent> _trackedWyrms = new HashSet<WyrmComponent>();
+        // Air cells one tile above the den's top layer, one per X/Y
+        // column the den occupies. Populated alongside _ownTiles in
+        // CacheOwnTiles. Used by the surface-moisture probe, cover-depth
+        // calculation, and emergence picker, which all need to reason
+        // about "what's covering the den" rather than the den's own
+        // cells. For a 1×1×1 den this is a single cell; for a 2×2×2 den
+        // it's four cells (the four top columns).
+        private readonly List<Vector3Int> _topCells = new List<Vector3Int>();
 
-        // Cooldown for the boundary recheck. Wyrms move slowly; checking
-        // every few ticks is plenty.
-        private const int RadiusRecheckEveryTicks = 32;
-        private int _ticksSinceRadiusRecheck = RadiusRecheckEveryTicks;
+        // Wyrms attributed to this den: maintained via owner-stamping
+        // rather than radius probing. WyrmFactory tags each new wyrm
+        // with its owning den, the registry's add/remove events keep
+        // the set in sync, and a save's GUIDs round-trip through
+        // WyrmComponent.PostLoadEntity. No per-tick reconcile, no
+        // radius math, no asymmetry-on-multi-block-footprints concerns.
+        private readonly HashSet<WyrmComponent> _ownedWyrms = new HashSet<WyrmComponent>();
 
         private WyrmDenSpec _spec;
         private BlockObject _blockObject;
@@ -117,9 +122,46 @@ namespace Mods.WhereWyrmsWait.Hazards
         public float WarmupFraction =>
             WarmupTargetDays > 0f ? Mathf.Clamp01(_warmupDays / WarmupTargetDays) : 0f;
         public float SpawnCooldownDays => _spawnCooldownDays;
-        public int LiveSpawnCount => _trackedWyrms.Count;
+        public int LiveSpawnCount => _ownedWyrms.Count;
         public bool SurfaceIsGreen => _surfaceIsGreen;
         public int CoverDepth => ComputeCoverDepth();
+
+        // For an N×M×K den, the picker probe origins are the topmost
+        // own-cell of each footprint column — that's where the picker
+        // starts walking upward. Built lazily from _topCells (which
+        // stores the air cell *above* each column's top-own cell).
+        // 1×1 legacy dens collapse to one entry, so callers that
+        // iterate (the visual + the spawner) work for both.
+        private Vector3Int[] _probeCellsCache;
+        public IReadOnlyList<Vector3Int> EmergenceProbeCells
+        {
+            get
+            {
+                if (_blockObject == null)
+                {
+                    return System.Array.Empty<Vector3Int>();
+                }
+                if (_probeCellsCache == null
+                    || _probeCellsCache.Length != Mathf.Max(1, _topCells.Count))
+                {
+                    if (_topCells.Count == 0)
+                    {
+                        _probeCellsCache = new[] { _blockObject.Coordinates };
+                    }
+                    else
+                    {
+                        _probeCellsCache = new Vector3Int[_topCells.Count];
+                        for (int i = 0; i < _topCells.Count; i++)
+                        {
+                            var top = _topCells[i];
+                            _probeCellsCache[i] =
+                                new Vector3Int(top.x, top.y, top.z - 1);
+                        }
+                    }
+                }
+                return _probeCellsCache;
+            }
+        }
 
         public void InitializeEntity()
         {
@@ -129,16 +171,26 @@ namespace Mods.WhereWyrmsWait.Hazards
             _explosionService.TilesExplosion += OnTilesExplosion;
             _wyrmRegistry.WyrmRegistered += OnWyrmRegistered;
             _wyrmRegistry.WyrmUnregistered += OnWyrmUnregistered;
-            // Seed the tracked set from any wyrms already alive at load.
+            _ticksSinceSurfaceRecompute = SurfaceRecomputeEveryTicks;
+        }
+
+        public void PostInitializeEntity()
+        {
+            // Re-attribute already-loaded wyrms whose saved owner-id
+            // matches our EntityId. Entity load order is Load(all) →
+            // PreInitialize(all) → Initialize(all) → PostInitialize(all)
+            // → PostLoad(all). Doing this in InitializeEntity would race
+            // the wyrms' own InitializeEntity that registers them in
+            // WyrmRegistry, so we wait for PostInitialize: by then every
+            // loaded wyrm has registered itself, and HasOwningDenId
+            // sidesteps the still-null _owningDen reference.
             foreach (var wyrm in _wyrmRegistry.LiveWyrms)
             {
-                if (IsWithinTrackingRadius(wyrm))
+                if (wyrm.HasOwningDenId(this))
                 {
-                    _trackedWyrms.Add(wyrm);
+                    _ownedWyrms.Add(wyrm);
                 }
             }
-            _ticksSinceSurfaceRecompute = SurfaceRecomputeEveryTicks;
-            _ticksSinceRadiusRecheck = RadiusRecheckEveryTicks;
         }
 
         public void DeleteEntity()
@@ -146,7 +198,7 @@ namespace Mods.WhereWyrmsWait.Hazards
             _explosionService.TilesExplosion -= OnTilesExplosion;
             _wyrmRegistry.WyrmRegistered -= OnWyrmRegistered;
             _wyrmRegistry.WyrmUnregistered -= OnWyrmUnregistered;
-            _trackedWyrms.Clear();
+            _ownedWyrms.Clear();
         }
 
         public override void Tick()
@@ -164,8 +216,6 @@ namespace Mods.WhereWyrmsWait.Hazards
                 _entityService.Delete(this);
                 return;
             }
-
-            ReconcileTrackedWyrmsIfDue();
 
             RecomputeSurfaceIfDue();
 
@@ -255,10 +305,39 @@ namespace Mods.WhereWyrmsWait.Hazards
         private void CacheOwnTiles()
         {
             _ownTiles.Clear();
+            _topCells.Clear();
+            // Probe-cells cache is rebuilt lazily off _topCells; reset it
+            // here so the next read picks up the fresh layout.
+            _probeCellsCache = null;
             if (_blockObject == null) return;
             foreach (var coord in _blockObject.PositionedBlocks.GetAllCoordinates())
             {
                 _ownTiles.Add(coord);
+            }
+            // Resolve the den's top-layer cells: the (X, Y) columns the
+            // den covers, each at the topmost own-Z + 1. These are the
+            // "above-the-den" air/cover cells we use for surface-moisture
+            // probes, cover-depth measurements and emergence picks. For
+            // a 1×1×1 den this collapses to exactly one cell directly
+            // above; for the shipped 2×2×2 den it produces 2×2 = 4
+            // cells. The picker / probes then iterate them.
+            if (_ownTiles.Count == 0) return;
+            int maxOwnZ = int.MinValue;
+            foreach (var coord in _ownTiles)
+            {
+                if (coord.z > maxOwnZ) maxOwnZ = coord.z;
+            }
+            var topColumns = new HashSet<Vector2Int>();
+            foreach (var coord in _ownTiles)
+            {
+                if (coord.z == maxOwnZ)
+                {
+                    topColumns.Add(new Vector2Int(coord.x, coord.y));
+                }
+            }
+            foreach (var col in topColumns)
+            {
+                _topCells.Add(new Vector3Int(col.x, col.y, maxOwnZ + 1));
             }
         }
 
@@ -271,13 +350,29 @@ namespace Mods.WhereWyrmsWait.Hazards
 
         private bool ProbeSurfaceMoisture()
         {
+            if (_blockObject == null) return false;
             try
             {
-                // Same column-snap trick as WyrmHusk: SoilMoistureService
-                // resolves to the column's ceiling tile, so any coordinate
-                // inside the column works.
-                return _soilMoistureService.SoilIsMoist(
-                    _blockObject.CoordinatesAtBaseZ);
+                // Multi-block den: any of the four (or one, for a 1×1
+                // legacy den) top-cell columns going green wakes the
+                // den. SoilMoistureService snaps to the column ceiling
+                // tile internally, so we can pass any cell inside the
+                // column. Fan over the top cells rather than just
+                // _blockObject.CoordinatesAtBaseZ — the latter only
+                // covers the SW corner column for a multi-block den.
+                if (_topCells.Count == 0)
+                {
+                    return _soilMoistureService.SoilIsMoist(
+                        _blockObject.CoordinatesAtBaseZ);
+                }
+                foreach (var cell in _topCells)
+                {
+                    if (_soilMoistureService.SoilIsMoist(cell))
+                    {
+                        return true;
+                    }
+                }
+                return false;
             }
             catch (System.Exception ex)
             {
@@ -296,31 +391,58 @@ namespace Mods.WhereWyrmsWait.Hazards
             }
             try
             {
-                // Same logic as WyrmHusk: query terrain height from above
-                // all terrain so we get the column's actual surface,
-                // then count any block-objects on top.
-                var coords = _blockObject.Coordinates;
+                // For a multi-block den, the cover that gates the wake is
+                // the *thinnest* spot — the player only needs to keep one
+                // column irrigated long enough for the den to wake. Take
+                // the minimum cover depth across all top-cell columns.
+                // For a 1×1 legacy den this collapses to the single column.
                 int aboveAll = _terrainService.MaxTerrainHeight + 1;
-                int surfaceZ = _terrainService.GetTerrainHeight(
-                    new Vector3Int(coords.x, coords.y, aboveAll));
-                int naturalCover = Mathf.Max(0, surfaceZ - 1 - coords.z);
 
-                int blockObjectCover = 0;
-                int z = Mathf.Max(coords.z + 1, surfaceZ);
-                int ceiling = z + 64;
-                while (z < ceiling)
+                if (_topCells.Count == 0)
                 {
-                    var probe = new Vector3Int(coords.x, coords.y, z);
-                    if (_blockService.GetObjectsAt(probe).Count == 0) break;
-                    blockObjectCover++;
-                    z++;
+                    var coords = _blockObject.Coordinates;
+                    return ComputeColumnCoverDepth(coords, aboveAll);
                 }
-                return naturalCover + blockObjectCover;
+
+                int minDepth = int.MaxValue;
+                foreach (var top in _topCells)
+                {
+                    // Each top-cell sits one tile above its column's
+                    // topmost own-Z; ComputeColumnCoverDepth treats the
+                    // cell's Z minus 1 as the den's local top, so we
+                    // pass (X, Y, topZ - 1).
+                    var below = new Vector3Int(top.x, top.y, top.z - 1);
+                    int d = ComputeColumnCoverDepth(below, aboveAll);
+                    if (d < minDepth) minDepth = d;
+                }
+                return minDepth == int.MaxValue ? 0 : minDepth;
             }
             catch
             {
                 return 0;
             }
+        }
+
+        private int ComputeColumnCoverDepth(Vector3Int denTopOfColumn, int aboveAll)
+        {
+            // Same logic the husk uses, parameterised on which (X, Y, denZ)
+            // we measure from. denTopOfColumn is the topmost den-owned cell
+            // in that column.
+            int surfaceZ = _terrainService.GetTerrainHeight(
+                new Vector3Int(denTopOfColumn.x, denTopOfColumn.y, aboveAll));
+            int naturalCover = Mathf.Max(0, surfaceZ - 1 - denTopOfColumn.z);
+
+            int blockObjectCover = 0;
+            int z = Mathf.Max(denTopOfColumn.z + 1, surfaceZ);
+            int ceiling = z + 64;
+            while (z < ceiling)
+            {
+                var probe = new Vector3Int(denTopOfColumn.x, denTopOfColumn.y, z);
+                if (_blockService.GetObjectsAt(probe).Count == 0) break;
+                blockObjectCover++;
+                z++;
+            }
+            return naturalCover + blockObjectCover;
         }
 
         private float ComputeWarmupTargetDays()
@@ -329,94 +451,69 @@ namespace Mods.WhereWyrmsWait.Hazards
             return _spec.BaseWarmupDays + _spec.DaysPerCoverBlock * CoverDepth;
         }
 
-        private int CountLiveSpawns()
-        {
-            // Convenience accessor maintained by WyrmRegistry events plus
-            // a periodic radius recheck (see ReconcileTrackedWyrmsIfDue).
-            return _trackedWyrms.Count;
-        }
-
-        private bool IsWithinTrackingRadius(WyrmComponent wyrm)
-        {
-            if (wyrm == null || wyrm.GameObject == null || _blockObject == null)
-            {
-                return false;
-            }
-            float radius = _spec?.SpawnTrackingRadius ?? 24f;
-            float radiusSqr = radius * radius;
-            Vector3 here = new Vector3(
-                _blockObject.Coordinates.x + 0.5f,
-                _blockObject.Coordinates.z,
-                _blockObject.Coordinates.y + 0.5f);
-            return (wyrm.Transform.position - here).sqrMagnitude <= radiusSqr;
-        }
-
         private void OnWyrmRegistered(object sender, WyrmComponent wyrm)
         {
-            // A new wyrm is born close enough to count toward this den's
-            // cap. The most common case: this den just spawned it.
-            if (IsWithinTrackingRadius(wyrm))
+            // Owner-stamping: a new wyrm only counts if it belongs to us.
+            // The factory stamps owner at spawn time, before the registry
+            // event fires, so this works for in-game new spawns. For
+            // post-load reattribution see InitializeEntity, which sweeps
+            // already-loaded wyrms for OwningDen == this.
+            if (wyrm != null && wyrm.OwningDen == this)
             {
-                _trackedWyrms.Add(wyrm);
+                _ownedWyrms.Add(wyrm);
             }
         }
 
         private void OnWyrmUnregistered(object sender, WyrmComponent wyrm)
         {
-            // Always remove on unregister, no boundary check needed —
-            // a dead wyrm doesn't count even if it died inside the radius.
-            _trackedWyrms.Remove(wyrm);
-        }
-
-        private void ReconcileTrackedWyrmsIfDue()
-        {
-            // Wyrms walk; one that wandered out of range stops counting,
-            // and one that wandered in starts counting. Cheap re-walk of
-            // the (small) set every few ticks instead of per-tick.
-            if (_ticksSinceRadiusRecheck++ < RadiusRecheckEveryTicks) return;
-            _ticksSinceRadiusRecheck = 0;
-
-            // Drop any tracked wyrms that have died, been deleted, or
-            // wandered out of range.
-            _trackedWyrms.RemoveWhere(w => w == null || w.GameObject == null
-                || !IsWithinTrackingRadius(w));
-
-            // Add any registry-known wyrms that have wandered into range
-            // but weren't spawned by us (e.g. another den's wyrm crossing
-            // our radius). Two dens within 2× tracking radius will
-            // therefore share their wyrms in their per-den caps —
-            // documented design behaviour.
-            foreach (var wyrm in _wyrmRegistry.LiveWyrms)
-            {
-                if (!_trackedWyrms.Contains(wyrm) && IsWithinTrackingRadius(wyrm))
-                {
-                    _trackedWyrms.Add(wyrm);
-                }
-            }
+            // Always remove on unregister — a dead wyrm doesn't count.
+            _ownedWyrms.Remove(wyrm);
         }
 
         private void SpawnIfPossible()
         {
-            if (CountLiveSpawns() >= _spec.MaxLiveWyrms) return;
+            if (_ownedWyrms.Count >= _spec.MaxLiveWyrms) return;
 
-            if (!_emergencePicker.TryPick(
-                _blockObject.Coordinates, _spec.EmergenceShiftRadius, out var cell))
+            // Multi-block dens: try the picker against each top column
+            // (exposed via IWyrmHazard.EmergenceProbeCells) and use the
+            // first one that finds an open emergence cell. Walking the
+            // columns in their cached order is deterministic (matches
+            // replay/save order); on a 1×1 legacy den the list collapses
+            // to a single entry.
+            int radius = _spec.EmergenceShiftRadius;
+            Vector3Int chosenCell = default;
+            bool found = false;
+            foreach (var probeOrigin in EmergenceProbeCells)
+            {
+                if (_emergencePicker.TryPick(probeOrigin, radius, out var cell))
+                {
+                    chosenCell = cell;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
             {
                 Debug.LogWarning(
                     $"[WhereWyrmsWait] Den at {_blockObject.Coordinates} could not " +
-                    "find an open emergence tile; skipping this spawn cycle.");
+                    "find an open emergence tile in any of its top columns; " +
+                    "skipping this spawn cycle.");
                 return;
             }
 
             var worldPos = new Vector3(
-                cell.x + 0.5f, cell.z, cell.y + 0.5f);
-            var wyrm = _wyrmFactory.Spawn(worldPos);
+                chosenCell.x + 0.5f, chosenCell.z, chosenCell.y + 0.5f);
+            // Stamp ownership so this wyrm counts toward our cap and
+            // re-attributes correctly on save/load. WyrmFactory routes
+            // the owner reference into WyrmComponent.SetOwningDen.
+            var wyrm = _wyrmFactory.Spawn(worldPos, Quaternion.identity, this);
             if (wyrm != null)
             {
                 _notifications.Post(WyrmNotifications.WyrmEmergedKey, wyrm);
                 Debug.Log(
                     $"[WhereWyrmsWait] Den at {_blockObject.Coordinates} spawned a " +
-                    $"wyrm at {cell} (now {CountLiveSpawns()}/{_spec.MaxLiveWyrms} live).");
+                    $"wyrm at {chosenCell} (now {_ownedWyrms.Count}/{_spec.MaxLiveWyrms} live).");
             }
         }
     }

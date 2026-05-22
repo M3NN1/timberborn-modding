@@ -8,9 +8,11 @@ using UnityEngine.UIElements;
 namespace Mods.WhereWyrmsWait.UI
 {
     /// <summary>
-    /// Entity-panel fragment for a Lure Stake. Shows current Soothesop
-    /// stock and exposes a Restock debug button (sets stock to capacity).
-    /// In v0.4 the button will be replaced with hauler-delivery integration.
+    /// Entity-panel fragment for a Lure Stake. Shows the current
+    /// Soothesop stock as a progress bar; haulers refill the stake via
+    /// the vanilla <c>PublicInput</c> plumbing wired up in
+    /// <see cref="LureStakeInventoryInitializer"/>, so this fragment is
+    /// purely informational.
     /// </summary>
     public class LureStakeFragment : IEntityPanelFragment
     {
@@ -62,25 +64,21 @@ namespace Mods.WhereWyrmsWait.UI
         private VisualElement BuildRoot()
         {
             var root = new VisualElement();
-            root.style.paddingTop = 6;
-            root.style.paddingBottom = 6;
+            WyrmPanelStyle.ApplyPanelStyle(root);
 
             var title = new Label(_loc.T(TitleKey));
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 4;
+            WyrmPanelStyle.ApplyTitleStyle(title);
             root.Add(title);
 
             _stockLabel = new Label();
-            _stockLabel.style.marginBottom = 4;
+            WyrmPanelStyle.ApplyBodyLabelStyle(_stockLabel);
             root.Add(_stockLabel);
 
             var bg = new VisualElement();
-            bg.style.height = 8;
-            bg.style.backgroundColor = new Color(0f, 0f, 0f, 0.4f);
-            bg.style.marginBottom = 6;
+            WyrmPanelStyle.ApplyBarTrackStyle(bg, height: 8);
             _stockBar = new VisualElement();
-            _stockBar.style.height = 8;
-            _stockBar.style.backgroundColor = new Color(0.4f, 0.6f, 0.3f);
+            WyrmPanelStyle.ApplyBarFillStyle(
+                _stockBar, new Color(0.4f, 0.6f, 0.3f), height: 8);
             bg.Add(_stockBar);
             root.Add(bg);
 

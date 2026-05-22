@@ -78,8 +78,8 @@
     "Icon": "Buildings/Tools/LureStake/LureStakeIcon"
   },
   "LureStakeSpec": {
-    "Capacity": 5,
-    "SatiateRadius": 3,
+    "Capacity": 6,
+    "SatiateRadius": 4,
     "ConsumptionPerWyrmPerDay": 1.0
   },
   "BuildingAccessibleSpec": {
@@ -112,6 +112,23 @@
         ],
         "SphereColliders": [],
         "CapsuleColliders": []
+      },
+      "Children": {
+        "Bait_Low": {
+          "TimbermeshSpec": {
+            "Model": "Buildings/Tools/LureStake/LureStake.Bait_Low"
+          }
+        },
+        "Bait_Mid": {
+          "TimbermeshSpec": {
+            "Model": "Buildings/Tools/LureStake/LureStake.Bait_Mid"
+          }
+        },
+        "Bait_Full": {
+          "TimbermeshSpec": {
+            "Model": "Buildings/Tools/LureStake/LureStake.Bait_Full"
+          }
+        }
       }
     }
   }

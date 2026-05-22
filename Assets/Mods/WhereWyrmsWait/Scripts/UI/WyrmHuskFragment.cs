@@ -10,12 +10,16 @@ namespace Mods.WhereWyrmsWait.UI
     /// <summary>
     /// Entity-panel fragment shown while a Wyrm Husk is selected. Displays
     /// cover depth, warmup progress, and whether the surface is currently
-    /// moist (i.e. the timer is ticking up). Built with UI Toolkit so the
-    /// mod stays AssetBundle-free for UI.
+    /// moist (i.e. the timer is ticking up). Built with UI Toolkit and
+    /// styled inline via <see cref="WyrmPanelStyle"/>, so the fragment
+    /// stays UXML-free even though the mod ships an AssetBundle for
+    /// other resources.
     /// </summary>
     public class WyrmHuskFragment : IEntityPanelFragment
     {
         private const string TitleKey = "Building.WyrmHusk.DisplayName";
+        private const string WarmingKey = "WWW.Husk.WarmingStatus";
+        private const string DormantKey = "WWW.Husk.DormantStatus";
 
         private readonly ILoc _loc;
 
@@ -53,7 +57,7 @@ namespace Mods.WhereWyrmsWait.UI
         public void UpdateFragment()
         {
             if (_current == null) return;
-            string state = _current.SurfaceIsGreen ? "Stirring" : "Dormant";
+            string state = _loc.T(_current.SurfaceIsGreen ? WarmingKey : DormantKey);
             _statusLabel.text =
                 $"{state} — depth {_current.CoverDepth}, " +
                 $"{_current.WarmupDays:F1}/{_current.WarmupTargetDays:F1} days";
@@ -66,24 +70,20 @@ namespace Mods.WhereWyrmsWait.UI
         private VisualElement BuildRoot()
         {
             var root = new VisualElement();
-            root.style.paddingTop = 6;
-            root.style.paddingBottom = 6;
+            WyrmPanelStyle.ApplyPanelStyle(root);
 
             var title = new Label(_loc.T(TitleKey));
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 4;
+            WyrmPanelStyle.ApplyTitleStyle(title);
             root.Add(title);
 
             _statusLabel = new Label();
-            _statusLabel.style.marginBottom = 4;
+            WyrmPanelStyle.ApplyBodyLabelStyle(_statusLabel);
             root.Add(_statusLabel);
 
             var barBg = new VisualElement();
-            barBg.style.height = 8;
-            barBg.style.backgroundColor = new Color(0f, 0f, 0f, 0.4f);
+            WyrmPanelStyle.ApplyBarTrackStyle(barBg, height: 8);
             _barFill = new VisualElement();
-            _barFill.style.height = 8;
-            _barFill.style.backgroundColor = Color.gray;
+            WyrmPanelStyle.ApplyBarFillStyle(_barFill, Color.gray, height: 8);
             barBg.Add(_barFill);
             root.Add(barBg);
 

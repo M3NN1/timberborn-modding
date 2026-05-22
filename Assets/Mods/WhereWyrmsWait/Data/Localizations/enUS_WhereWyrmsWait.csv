@@ -9,19 +9,20 @@ WWW.Settings.HungerRatePercent.Tooltip,Multiplier on hunger accumulation. Higher
 WWW.Settings.ContaminationResistancePercent,Contamination resistance (%),Wyrm tolerance for badwater
 WWW.Settings.ContaminationResistancePercent.Tooltip,Multiplier on the lethal contamination threshold. Higher = wyrms survive more total absorbed badwater before dying; killing one takes a sustained channeling effort.,
 WWW.Settings.SandboxMode,Sandbox mode,Pacifist toggle
-WWW.Settings.SandboxMode.Tooltip,When on; wyrms still wake and walk but never damage beavers or buildings. Useful for map authors testing layouts.,
+WWW.Settings.SandboxMode.Tooltip,"When on, wyrms still wake and walk but never damage beavers or buildings. Useful for map authors testing layouts.",
 Building.WyrmHusk.DisplayName,Wyrm Husk,Map-author hazard tile
 Building.WyrmHusk.Description,The dried husk of a slumbering wyrm. Wakes when the soil above turns green.,
 Building.WyrmHusk.Flavor,The earth remembers what slept beneath it.,
 WWW.Husk.WarmingStatus,Stirring,Status while warming up
 WWW.Husk.DormantStatus,Dormant,Status while inert
 Creature.Wyrm.DisplayName,Wyrm,The active predator
-Creature.Wyrm.Description,A starved; ancient predator that emerged from the soil. It hunts beavers and chews through unfortified walls. Cannot be cured of badwater contamination.,
+Creature.Wyrm.Description,"A starved, ancient predator that emerged from the soil. It hunts beavers and chews through unfortified walls. Cannot be cured of badwater contamination.",
 Creature.Wyrm.Flavor,The earth gives back what it kept.,
 WWW.Wyrm.HungerLabel,Hunger,Entity panel hunger label
 WWW.Wyrm.ContaminationLabel,Contamination,Entity panel contamination label
 WWW.Wyrm.SatedStatus,Sated,Status while pacified by Soothesop
 WWW.Wyrm.HuntingStatus,Hunting,Status while pursuing a beaver
+WWW.Wyrm.StalkingStatus,Stalking,Status while hungry but with no beaver in sight
 WWW.Notification.BeaverEaten,Eaten by a wyrm,Death-message string when a wyrm catches a beaver
 Good.Soothesop.DisplayName,Soothesop,Singular form
 Good.Soothesop.PluralDisplayName,Soothesop,Plural form (English uncountable)
@@ -39,3 +40,4 @@ WWW.Notification.WyrmEmerged,A wyrm has emerged!,Posted when a husk or den spawn
 WWW.Notification.WyrmDied,The wyrm is dead.,Posted when a wyrm is killed by contamination or other means
 WWW.Notification.DenDestroyed,A wyrm den was destroyed.,Posted when an explosion kills a den
 WWW.Wyrm.PoisonedStatus,Poisoned,Status while absorbing badwater contamination
+WWW.Wyrm.DevKillButton,Kill wyrm (dev),Dev-only kill button shown in the wyrm entity panel

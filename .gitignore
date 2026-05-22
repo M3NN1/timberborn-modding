@@ -61,3 +61,6 @@ sysinfo.txt
 # Microsoft Office temporary files
 ~*
 
+/Assets/Mods/CustomCursor
+/Assets/Mods/GoodStatistics
+/Assets/Mods/Minimap

@@ -4,45 +4,42 @@ using Mods.WhereWyrmsWait.Hazards;
 using Mods.WhereWyrmsWait.Lure;
 using Mods.WhereWyrmsWait.UI;
 using Mods.WhereWyrmsWait.Wyrm;
+using Timberborn.Emptying;
 using Timberborn.EntityPanelSystem;
+using Timberborn.SelectionSystem;
 using Timberborn.StatusSystem;
 using Timberborn.TemplateInstantiation;
+using Timberborn.Workshops;
 
 namespace Mods.WhereWyrmsWait.Configuration
 {
     /// <summary>
     /// Wires the mod's components into Bindito and registers template
-    /// decorators so that any blueprint carrying a <see cref="WyrmHuskSpec"/>
-    /// also gets a <see cref="WyrmHusk"/> ticker at runtime.
-    /// <para>
-    /// <see cref="WyrmSettings"/> is bound separately by
-    /// <see cref="WyrmsSettingsConfigurator"/> so the eMka panel can find it
-    /// from both the main menu and the in-game scene, mirroring DDD's
-    /// <c>DamDegradationSettingsConfigurator</c>.
-    /// </para>
+    /// decorators. <see cref="WyrmSettings"/> is bound separately by
+    /// <see cref="WyrmsSettingsConfigurator"/> so the eMka panel can find
+    /// it from both the main menu and the in-game scene.
     /// </summary>
     [Context("Game")]
     public class WyrmsConfigurator : Configurator
     {
         protected override void Configure()
         {
-            // Game-wide singletons.
             Bind<WyrmRegistry>().AsSingleton();
             Bind<WyrmEmergencePicker>().AsSingleton();
             Bind<WyrmFactory>().AsSingleton();
+            Bind<WyrmKiller>().AsSingleton();
             Bind<WyrmNotifications>().AsSingleton();
             Bind<LureStakeRegistry>().AsSingleton();
             Bind<LureStakeInventoryInitializer>().AsSingleton();
 
-            // Entity panel fragments.
             Bind<WyrmHuskFragment>().AsSingleton();
             Bind<WyrmFragment>().AsSingleton();
             Bind<LureStakeFragment>().AsSingleton();
             MultiBind<EntityPanelModule>().ToProvider<EntityPanelProvider>().AsSingleton();
 
-            // Per-entity transient bindings.
             Bind<WyrmHusk>().AsTransient();
             Bind<WyrmDen>().AsTransient();
+            Bind<HazardEmergenceVisual>().AsTransient();
             Bind<WyrmComponent>().AsTransient();
             Bind<WyrmContaminationSampler>().AsTransient();
             Bind<WyrmMovement>().AsTransient();
@@ -51,7 +48,9 @@ namespace Mods.WhereWyrmsWait.Configuration
             Bind<WyrmWallEater>().AsTransient();
             Bind<WyrmSatiationDetector>().AsTransient();
             Bind<WyrmStatusIndicator>().AsTransient();
+            Bind<WyrmEmergenceDirtEffect>().AsTransient();
             Bind<LureStake>().AsTransient();
+            Bind<LureStakeBaitVisual>().AsTransient();
 
             MultiBind<TemplateModule>()
                 .ToProvider<TemplateModuleProvider>()
@@ -59,10 +58,6 @@ namespace Mods.WhereWyrmsWait.Configuration
         }
     }
 
-    /// <summary>
-    /// Builds the template module with all our decorators, including the
-    /// dedicated Inventory initializer for Lure Stakes.
-    /// </summary>
     internal class TemplateModuleProvider : IProvider<TemplateModule>
     {
         private readonly LureStakeInventoryInitializer _lureStakeInventoryInitializer;
@@ -80,6 +75,8 @@ namespace Mods.WhereWyrmsWait.Configuration
             // Hazards.
             builder.AddDecorator<WyrmHuskSpec, WyrmHusk>();
             builder.AddDecorator<WyrmDenSpec, WyrmDen>();
+            builder.AddDecorator<WyrmHuskSpec, HazardEmergenceVisual>();
+            builder.AddDecorator<WyrmDenSpec, HazardEmergenceVisual>();
 
             // Wyrm creature stack.
             builder.AddDecorator<WyrmSpec, WyrmComponent>();
@@ -91,44 +88,31 @@ namespace Mods.WhereWyrmsWait.Configuration
             builder.AddDecorator<WyrmSpec, WyrmSatiationDetector>();
             builder.AddDecorator<WyrmSpec, StatusSubject>();
             builder.AddDecorator<WyrmSpec, WyrmStatusIndicator>();
-            // Make wyrms clickable in the entity panel. Vanilla creatures
-            // get this via Character → SelectableObject; wyrms have no
-            // Character, so we add it directly. Selection raycast walks
-            // colliders → GetComponentInParent<SelectableObject>, so the
-            // capsule collider on the wyrm body is enough to be hit.
-            builder.AddDecorator<WyrmSpec, Timberborn.SelectionSystem.SelectableObject>();
+            builder.AddDecorator<WyrmSpec, WyrmEmergenceDirtEffect>();
+            // Wyrms have no Character (which would bring SelectableObject
+            // along for free), so we add it explicitly to make the wyrm
+            // body clickable in the entity panel.
+            builder.AddDecorator<WyrmSpec, SelectableObject>();
 
-            // Lure Stake stack — kept deliberately minimal.
-            //
-            // Why no FillInputHaulBehaviorProvider / FillInputWorkplaceBehavior:
-            // those are for *workplaces* that pull goods to themselves
-            // through assigned workers (Manufactory, GoodConsumingBuilding).
-            // The Lure Stake is a passive destination inventory with
-            // PublicInput set; haulers find it the same way they find a
-            // Stockpile — via DistrictInventoryRegistry/DistrictInventoryPicker
-            // walking inventories that accept the good. The Forager's
-            // Manufactory output side pushes Soothesop out of its own
-            // inventory; the district picker matches a Lure Stake's input
-            // capacity to that output, and a hauler is dispatched.
-            //
-            // Decorator chain that auto-builds the rest:
-            //   BuildingSpec → BlockableObject + DistrictBuilding
-            //   BuildingAccessibleSpec → BuildingAccessible → DistrictBuilding
-            //                          → DistrictInventoryAssigner
-            //   Inventory (our decorator) → Inventories (auto)
-            // So the only mod-owned wiring needed is the LureStake component
-            // itself plus the dedicated InventoryInitializer.
+            // Lure Stake hauler-delivery chain. Models vanilla
+            // FireworkLauncher: Inventory + PublicInput + Emptiable +
+            // FillInput* gives a passive "haulers fill me up" target.
+            // LureStake.OnEnterFinishedState() calls Inventory.Enable()
+            // — without that, haulers never see the stake.
             builder.AddDecorator<LureStakeSpec, LureStake>();
+            builder.AddDecorator<LureStake, AutoEmptiable>();
+            builder.AddDecorator<LureStake, Emptiable>();
+            builder.AddDecorator<LureStake, FillInputHaulBehaviorProvider>();
+            builder.AddDecorator<LureStake, FillInputWorkplaceBehavior>();
+            builder.AddDecorator<LureStake, EmptyInventoriesWorkplaceBehavior>();
+            builder.AddDecorator<LureStake, RemoveUnwantedStockWorkplaceBehavior>();
+            builder.AddDecorator<LureStake, LureStakeBaitVisual>();
             builder.AddDedicatedDecorator(_lureStakeInventoryInitializer);
 
             return builder.Build();
         }
     }
 
-    /// <summary>
-    /// Registers <see cref="WyrmSettings"/> in both the main menu and game
-    /// scene so the eMka panel can render the cog button on this mod's card.
-    /// </summary>
     [Context("MainMenu")]
     [Context("Game")]
     public class WyrmsSettingsConfigurator : Configurator
@@ -139,11 +123,6 @@ namespace Mods.WhereWyrmsWait.Configuration
         }
     }
 
-    /// <summary>
-    /// Builds the EntityPanelModule that exposes our middle-fragment UIs
-    /// (husk warmup, wyrm health, lure stake stock) to the in-game entity
-    /// panel. Mirrors DDD's <c>DamHealthPanelProvider</c>.
-    /// </summary>
     internal class EntityPanelProvider : IProvider<EntityPanelModule>
     {
         private readonly WyrmHuskFragment _husk;

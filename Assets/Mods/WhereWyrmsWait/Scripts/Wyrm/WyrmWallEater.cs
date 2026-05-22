@@ -12,45 +12,31 @@ using UnityEngine;
 namespace Mods.WhereWyrmsWait.Wyrm
 {
     /// <summary>
-    /// When a hungry wyrm can't reach its target because a player-built
-    /// block is in the way, this component chews through it. After
-    /// <c>BlockChewDays</c> in-game days of contact, the offending
-    /// <see cref="BlockObject"/> is deleted and the wyrm replans.
-    /// <para>
-    /// Vanilla Timberborn doesn't have a damage model on most building
-    /// blocks — they exist or they're <c>EntityService.Delete</c>d. So
-    /// "chew" is just a per-block timer; once it hits the threshold,
-    /// the whole block disappears at once. Visually that reads as the
-    /// wyrm punching a hole through a wall, which is what we want.
-    /// </para>
-    /// <para>
-    /// Sated wyrms (Soothesop in range of a Lure Stake) skip the chew
-    /// loop entirely — that's the whole point of the bait economy.
-    /// Hungry-but-pathing wyrms also skip: chewing only happens when
-    /// the path planner failed AND there's a chewable adjacent block.
-    /// </para>
-    /// <para>
-    /// Phase 3 stub: focuses on vanilla blocks. <c>WyrmHusk</c> /
-    /// future <c>WyrmDen</c> blocks are explicitly skipped so wyrms
-    /// don't accidentally cannibalize their own siblings.
-    /// </para>
+    /// When a hungry wyrm is stuck against a player-built block, this
+    /// component chews through it. After
+    /// <see cref="WyrmSpec.BlockChewDays"/> in-game days of contact,
+    /// the offending <see cref="BlockObject"/> is deleted whole — most
+    /// vanilla blocks have no damage model, so "chew" is just a timer.
+    /// Sated, sandbox, digesting, or unstuck wyrms don't chew. Only
+    /// lateral neighbours; vertical "chewing" is the dynamite path's
+    /// territory.
     /// </summary>
     public class WyrmWallEater : TickableComponent, IAwakableComponent
     {
-        private const float BlockChewDays = 1.5f;
+        // Safety net for the gap between Awake() and the template
+        // decorator landing the spec on us. Once _spec is set,
+        // ResolveBlockChewDays reads from there.
+        private const float DefaultBlockChewDays = 1.5f;
 
-        // We consider the wyrm "stuck" if it hasn't made meaningful
-        // forward progress over this many ticks. This catches the case
-        // where the planner returned a long detour the wyrm can't reach
-        // in finite time, and where the planner returned no path at all.
+        // "Stuck" = no meaningful forward progress over this window.
+        // Catches both planner failure and "long detour we can't reach."
         private const int ProgressWindowTicks = 12;
-        // Required movement during the progress window to count as
-        // "still making progress." A few cm covers normal slow walking.
         private const float ProgressDistanceThreshold = 0.25f;
 
-        // 4-neighbour offsets in grid space (X, Y, Z=height). We only
-        // chew laterally — wyrms aren't supposed to dig down through
-        // floors or up through ceilings; that's the dynamite-only path.
+        // Mirrors WyrmHunter.ContactDistance — close enough that the
+        // wyrm is on its target rather than blocked by something else.
+        private const float ContactDistance = 0.6f;
+
         private static readonly Vector3Int[] NeighbourOffsets =
         {
             new Vector3Int(1, 0, 0),
@@ -66,15 +52,11 @@ namespace Mods.WhereWyrmsWait.Wyrm
 
         private WyrmComponent _wyrm;
         private WyrmMovement _movement;
+        private WyrmSpec _spec;
 
         private BlockObject _currentChewTarget;
         private float _chewProgressDays;
 
-        // Progress tracking: we record the wyrm's position once per tick
-        // and check whether it's actually moving. If movement stalls for
-        // ProgressWindowTicks ticks while we still have a target, we're
-        // stuck against something — at which point we look for adjacent
-        // chewable blocks.
         private Vector3 _lastProgressPosition;
         private int _ticksWithoutProgress;
 
@@ -91,13 +73,20 @@ namespace Mods.WhereWyrmsWait.Wyrm
         }
 
         public BlockObject CurrentChewTarget => _currentChewTarget;
-        public float ChewFraction => _chewProgressDays / BlockChewDays;
+        public float ChewFraction => _chewProgressDays / ResolveBlockChewDays();
 
         public void Awake()
         {
             _wyrm = GetComponent<WyrmComponent>();
             _movement = GetComponent<WyrmMovement>();
+            _spec = GetComponent<WyrmSpec>();
             _lastProgressPosition = Transform.position;
+        }
+
+        private float ResolveBlockChewDays()
+        {
+            float days = _spec?.BlockChewDays ?? DefaultBlockChewDays;
+            return days > 0f ? days : DefaultBlockChewDays;
         }
 
         public override void Tick()
@@ -111,24 +100,19 @@ namespace Mods.WhereWyrmsWait.Wyrm
                 return;
             }
 
-            // Sated, sandbox, no-target → don't chew.
             if (_wyrm.IsSated || _settings.SandboxMode || !_movement.HasTarget)
             {
                 ClearChew();
                 return;
             }
 
-            // Below the hunting threshold the wyrm is digesting — no
-            // wall damage, even if it happens to be next to a levee.
+            // Digesting wyrms (below HuntingThreshold) don't chew.
             if (!_wyrm.IsHunting)
             {
                 ClearChew();
                 return;
             }
 
-            // Only chew while the wyrm is "stuck" — i.e. has a target but
-            // no current path to it. WyrmMovement clears its corner list
-            // on a planning failure, so we can sniff that as the cue.
             if (!IsMovementStuck())
             {
                 ClearChew();
@@ -142,16 +126,10 @@ namespace Mods.WhereWyrmsWait.Wyrm
                 var previous = _currentChewTarget;
                 _currentChewTarget = FindAdjacentChewable();
                 _chewProgressDays = 0f;
-                if (_currentChewTarget == null)
-                {
-                    return;
-                }
-                // Log only when the chew target actually changed (not on
-                // every tick of an existing chew). With multi-cell
-                // adjacency now correct, "switched targets" is the
-                // genuinely interesting signal: it tells you the wyrm
-                // walked past one wall to start on a different one, or
-                // that progress is being reset on something.
+                if (_currentChewTarget == null) return;
+
+                // Only log on actual target changes, not on every tick
+                // of an existing chew.
                 if (!ReferenceEquals(previous, _currentChewTarget))
                 {
                     Debug.Log(
@@ -164,7 +142,7 @@ namespace Mods.WhereWyrmsWait.Wyrm
 
             float deltaDays = _dayNightCycle.FixedDeltaTimeInHours / 24f;
             _chewProgressDays += deltaDays;
-            if (_chewProgressDays >= BlockChewDays)
+            if (_chewProgressDays >= ResolveBlockChewDays())
             {
                 Chew(_currentChewTarget);
             }
@@ -172,11 +150,10 @@ namespace Mods.WhereWyrmsWait.Wyrm
 
         private bool IsMovementStuck()
         {
-            // We're "done", not "stuck", when the wyrm is right next to
-            // the live target — that's a successful catch in progress.
-            // Use world-space distance so we don't depend on path-planner
-            // bookkeeping (ReachedTarget would lie if the planner failed
-            // and the corner list is empty).
+            // "On the target" isn't stuck — that's a successful catch
+            // in progress. World-space distance avoids depending on
+            // planner bookkeeping (the corner list is empty after a
+            // planning failure, so ReachedTarget would lie).
             float toTarget =
                 (_movement.TargetPosition - Transform.position).magnitude;
             if (toTarget < ContactDistance)
@@ -186,19 +163,12 @@ namespace Mods.WhereWyrmsWait.Wyrm
                 return false;
             }
 
-            // Sample movement progress this tick. If we moved more than
-            // ProgressDistanceThreshold since the last sample, reset the
-            // counter — we're walking fine.
             float moved =
                 (Transform.position - _lastProgressPosition).magnitude;
             if (moved >= ProgressDistanceThreshold)
             {
                 _ticksWithoutProgress = 0;
                 _lastProgressPosition = Transform.position;
-                // Don't drop existing chew progress just because we
-                // shuffled a bit — only if we *also* have no current
-                // chew target. The chew flow itself decides when to
-                // clear progress.
                 return false;
             }
 
@@ -207,26 +177,17 @@ namespace Mods.WhereWyrmsWait.Wyrm
             return _ticksWithoutProgress >= ProgressWindowTicks;
         }
 
-        // The contact distance below which the wyrm is "on top of" its
-        // target and isn't stuck — copied conservatively to match the
-        // hunter's eat-on-contact threshold.
-        private const float ContactDistance = 0.6f;
-
         private BlockObject FindAdjacentChewable()
         {
-            var origin = WorldToGridInt(Transform.position);
+            var origin = CoordinateSystem.WorldToGridInt(Transform.position);
             foreach (var offset in NeighbourOffsets)
             {
                 var probe = origin + offset;
-                // Use GetObjectsAt rather than GetBottomObjectAt so we
-                // notice levees stacked on terrain — the "bottom" object
-                // at a given 3D cell isn't always the player-built block.
+                // GetObjectsAt rather than GetBottomObjectAt so we
+                // notice levees stacked on terrain.
                 foreach (var bo in _blockService.GetObjectsAt(probe))
                 {
-                    if (IsChewable(bo))
-                    {
-                        return bo;
-                    }
+                    if (IsChewable(bo)) return bo;
                 }
             }
             return null;
@@ -235,14 +196,10 @@ namespace Mods.WhereWyrmsWait.Wyrm
         private bool IsAdjacent(BlockObject bo)
         {
             if (bo == null || bo.GameObject == null) return false;
-            // Multi-cell buildings (stairs, lodges, dams) have several
-            // PositionedBlocks. Checking only `bo.Coordinates` (the
-            // origin tile) misses the case where the wyrm is next to a
-            // non-origin cell of the same building, which made the
-            // chew loop think the target had moved every tick. Probe
-            // each of the wyrm's lateral neighbours and ask the block
-            // object whether *any* of its positioned blocks live there.
-            var origin = WorldToGridInt(Transform.position);
+            // Multi-cell buildings (stairs, lodges, dams) span several
+            // PositionedBlocks. Checking only bo.Coordinates would miss
+            // adjacency to non-origin cells of the same building.
+            var origin = CoordinateSystem.WorldToGridInt(Transform.position);
             foreach (var offset in NeighbourOffsets)
             {
                 var probe = origin + offset;
@@ -257,21 +214,14 @@ namespace Mods.WhereWyrmsWait.Wyrm
         private bool IsChewable(BlockObject bo)
         {
             if (bo == null || bo.GameObject == null) return false;
-            // Only chew *player-built* things. BuildingSpec is the
-            // marker shared by every constructible blueprint (levee,
-            // dam, wall, lodge…). Natural terrain, water sources,
-            // creatures, and our own husk/den blocks all lack BuildingSpec
-            // and are therefore safe from chewing — which avoids
-            // EntityService.Delete on entities that don't expect to be
-            // deleted that way.
+            // BuildingSpec is the marker for player-built blueprints.
+            // Natural terrain, water sources, creatures, and our husks
+            // / dens all lack it and are safe from chewing.
             if (!bo.HasComponent<BuildingSpec>()) return false;
-            // Don't chew our own family. Wyrm's own GameObject doesn't
-            // have BlockObject so it's automatically excluded; husks and
-            // dens both have BlockObject + their own spec, so check both.
+            // Don't cannibalize our own family.
             if (bo.HasComponent<WyrmHuskSpec>()) return false;
             if (bo.HasComponent<WyrmDenSpec>()) return false;
-            // Don't chew blocks that aren't finished yet — construction
-            // sites are already going away on their own.
+            // Construction sites are already on their way out.
             if (!bo.IsFinished) return false;
             return true;
         }
@@ -298,14 +248,6 @@ namespace Mods.WhereWyrmsWait.Wyrm
         {
             _currentChewTarget = null;
             _chewProgressDays = 0f;
-        }
-
-        private static Vector3Int WorldToGridInt(Vector3 world)
-        {
-            // Route through the engine's coordinate helper so the wyrm's
-            // grid position stays consistent with how vanilla code reads
-            // creature positions.
-            return CoordinateSystem.WorldToGridInt(world);
         }
     }
 }

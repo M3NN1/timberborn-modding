@@ -1,4 +1,6 @@
 using Mods.WhereWyrmsWait.Core;
+using Mods.WhereWyrmsWait.Hazards;
+using System;
 using Timberborn.BaseComponentSystem;
 using Timberborn.EntitySystem;
 using Timberborn.Persistence;
@@ -10,30 +12,15 @@ using UnityEngine;
 namespace Mods.WhereWyrmsWait.Wyrm
 {
     /// <summary>
-    /// Per-wyrm hunger / contamination state. Sits on the entity
-    /// instantiated by <see cref="WyrmFactory"/>. Movement and target
-    /// selection live in <c>WyrmMovement</c> and <c>WyrmHunter</c>;
-    /// this component owns state that's interesting to UI and to the
-    /// kill-threshold check.
-    /// <para>
-    /// Kill mechanic: contamination is the only damage pool. The wyrm
-    /// has no separate HP — every "the wyrm got hurt" path funnels
-    /// through <see cref="AbsorbContamination"/>. The bucket fills as
-    /// the wyrm passively drinks badwater out of the water column
-    /// (driven by <c>WyrmContaminationSampler</c>) and drains while
-    /// the wyrm isn't drinking. Above the lethal threshold, the wyrm
-    /// dies of poisoning.
-    /// </para>
-    /// <para>
-    /// The class is named <c>WyrmComponent</c> rather than just <c>Wyrm</c>
-    /// to avoid colliding with the namespace name and any future top-level
-    /// "Wyrm" coordinator. Keeps the type unambiguous from any file.
-    /// </para>
+    /// Per-wyrm hunger / contamination state. Movement and target
+    /// selection live in <c>WyrmMovement</c> and <c>WyrmHunter</c>.
+    /// Contamination is the wyrm's only damage pool — every "got hurt"
+    /// path funnels through <see cref="AbsorbContamination"/>; above
+    /// the lethal threshold, the wyrm dies of poisoning.
     /// </summary>
     public class WyrmComponent : TickableComponent,
-        IPersistentEntity, IInitializableEntity, IDeletableEntity
+        IPersistentEntity, IInitializableEntity, IPostLoadableEntity, IDeletableEntity
     {
-        // Save keys.
         private static readonly ComponentKey SaveKey = new ComponentKey("Wyrm");
         private static readonly PropertyKey<float> HungerKey =
             new PropertyKey<float>("Hunger");
@@ -41,59 +28,62 @@ namespace Mods.WhereWyrmsWait.Wyrm
             new PropertyKey<float>("Contamination");
         private static readonly PropertyKey<bool> SatedKey =
             new PropertyKey<bool>("Sated");
-        // Position/rotation are saved here because the wyrm's blueprint
-        // doesn't include vanilla Character (which would persist them
-        // for free). Without this, a saved-and-reloaded wyrm respawns
-        // at the world origin.
+        // Position/rotation owned here because the wyrm template doesn't
+        // include vanilla Character (which would persist them for free).
         private static readonly PropertyKey<Vector3> PositionKey =
             new PropertyKey<Vector3>("Position");
         private static readonly PropertyKey<Quaternion> RotationKey =
             new PropertyKey<Quaternion>("Rotation");
+        // Den that birthed this wyrm, persisted as the den's EntityId
+        // so the den can re-attribute its live offspring after load.
+        // Husk-born wyrms have Guid.Empty here.
+        private static readonly PropertyKey<Guid> OwningDenIdKey =
+            new PropertyKey<Guid>("OwningDenId");
 
         private readonly IDayNightCycle _dayNightCycle;
         private readonly EntityService _entityService;
+        private readonly EntityRegistry _entityRegistry;
         private readonly WyrmRegistry _registry;
         private readonly WyrmSettings _settings;
         private readonly WyrmNotifications _notifications;
 
         private WyrmSpec _spec;
 
-        // Live state.
         private float _hunger;
         private float _contamination;
         private bool _sated;
-        // True iff the sampler called AbsorbContamination this tick. Drives
-        // the "Poisoned" status icon and the contamination-bar tint. Reset
-        // by the sampler each sample cycle, so it accurately reflects "is
-        // the wyrm currently drinking badwater" rather than "did it ever."
+        // True iff the sampler called AbsorbContamination this tick.
+        // Drives the "Poisoned" status icon and contamination-bar tint.
         private bool _isAbsorbing;
         private bool _initialized;
+
+        // _owningDenId is the persisted GUID; _owningDen is the
+        // resolved instance. Set together by SetOwningDen at spawn,
+        // re-resolved from the GUID in PostLoadEntity after load.
+        private Guid _owningDenId;
+        private WyrmDen _owningDen;
 
         public WyrmComponent(
             IDayNightCycle dayNightCycle,
             EntityService entityService,
+            EntityRegistry entityRegistry,
             WyrmRegistry registry,
             WyrmSettings settings,
             WyrmNotifications notifications)
         {
             _dayNightCycle = dayNightCycle;
             _entityService = entityService;
+            _entityRegistry = entityRegistry;
             _registry = registry;
             _settings = settings;
             _notifications = notifications;
         }
 
-        // -------- public API --------
-
         public WyrmSpec Spec => _spec;
 
         public float Hunger => _hunger;
-        public bool IsHungry => !_sated && _hunger >= (_spec?.HungerMax ?? 1f);
 
-        /// <summary>
-        /// Hunger fraction in 0..1 of <c>HungerMax</c>. UI uses this for
-        /// the hunger bar.
-        /// </summary>
+        /// <summary>Hunger fraction in 0..1 of <c>HungerMax</c>.</summary>
         public float HungerFraction
         {
             get
@@ -104,10 +94,9 @@ namespace Mods.WhereWyrmsWait.Wyrm
         }
 
         /// <summary>
-        /// True when the wyrm is in hunting mode: hunger has crossed the
-        /// per-spec threshold and the wyrm isn't Soothesop-sated. Below
-        /// the threshold (or while sated), the wyrm crawls and ignores
-        /// beavers — it's still digesting its last kill.
+        /// True when the wyrm pursues prey: hunger past
+        /// <see cref="WyrmSpec.HuntingThreshold"/> and not sated. Below
+        /// the threshold the wyrm digests and ignores beavers.
         /// </summary>
         public bool IsHunting
         {
@@ -121,11 +110,9 @@ namespace Mods.WhereWyrmsWait.Wyrm
         }
 
         /// <summary>
-        /// Walk speed scaled by hunger and Soothesop-sated state. At
-        /// hunger 0 or while sated, returns
-        /// <c>WalkSpeed × MinSpeedMultiplier</c>; at <c>HungerMax</c>,
-        /// returns full <c>WalkSpeed</c>. Linear in between. Used by
-        /// <c>WyrmMovement</c> in place of <c>WyrmSpec.WalkSpeed</c>.
+        /// Walk speed scaled by hunger and Soothesop-sated state. Lerps
+        /// linearly between <c>WalkSpeed × MinSpeedMultiplier</c> at
+        /// hunger 0 / sated and full <c>WalkSpeed</c> at <c>HungerMax</c>.
         /// </summary>
         public float EffectiveWalkSpeed
         {
@@ -140,11 +127,6 @@ namespace Mods.WhereWyrmsWait.Wyrm
             }
         }
 
-        /// <summary>
-        /// Total badwater absorbed (in column-depth units), minus regen.
-        /// Range 0 .. <see cref="LethalContamination"/>; at the cap the
-        /// wyrm dies.
-        /// </summary>
         public float Contamination => _contamination;
 
         public float LethalContamination =>
@@ -158,27 +140,49 @@ namespace Mods.WhereWyrmsWait.Wyrm
 
         public bool IsSated => _sated;
 
+        /// <summary>The den that spawned this wyrm, or null for husk-born wyrms.</summary>
+        public WyrmDen OwningDen => _owningDen;
+
         /// <summary>
-        /// True while badwater is actively being absorbed. Used by the UI
-        /// (status icon, contamination-bar tint). Distinct from "is over a
-        /// contaminated tile" — a wyrm sitting on dry land or on an empty
-        /// tile that *was* contaminated is not absorbing.
+        /// True while badwater is being absorbed. Distinct from "is on
+        /// a contaminated tile" — a wyrm sitting on a tile that *was*
+        /// contaminated but is now drained is not absorbing.
         /// </summary>
         public bool IsAbsorbingContamination => _isAbsorbing;
 
-        /// <summary>Set by <c>WyrmSatiationDetector</c> each tick.</summary>
         public void SetSated(bool value) => _sated = value;
 
-        /// <summary>Reset hunger to zero — call when the wyrm eats a beaver/wall.</summary>
-        public void Sate() => _hunger = 0f;
+        /// <summary>
+        /// Stamp this wyrm with its owning den. Called by
+        /// <see cref="WyrmFactory"/> right after spawn; pass null for
+        /// husk-born wyrms.
+        /// </summary>
+        public void SetOwningDen(WyrmDen den)
+        {
+            _owningDen = den;
+            _owningDenId = den != null
+                ? den.GetComponent<EntityComponent>().EntityId
+                : Guid.Empty;
+        }
 
         /// <summary>
-        /// Add to the wyrm's contamination bucket. Called by
-        /// <c>WyrmContaminationSampler</c> whenever a slice of badwater
-        /// has been drunk out of the surrounding water column.
-        /// <paramref name="amount"/> is the depth-units of contaminated
-        /// water actually consumed this tick.
+        /// True iff this wyrm's saved owner-id matches the given den's
+        /// EntityId. Used by <see cref="WyrmDen.InitializeEntity"/> to
+        /// reclaim offspring after load — at Initialize time
+        /// <see cref="OwningDen"/> isn't resolved yet, so dens have to
+        /// match through the loaded GUID.
         /// </summary>
+        public bool HasOwningDenId(WyrmDen candidate)
+        {
+            if (candidate == null) return false;
+            if (_owningDenId == Guid.Empty) return false;
+            return _owningDenId
+                == candidate.GetComponent<EntityComponent>().EntityId;
+        }
+
+        /// <summary>Reset hunger to zero — call when the wyrm eats.</summary>
+        public void Sate() => _hunger = 0f;
+
         public void AbsorbContamination(float amount)
         {
             if (amount <= 0f) return;
@@ -186,11 +190,6 @@ namespace Mods.WhereWyrmsWait.Wyrm
             _isAbsorbing = true;
         }
 
-        /// <summary>
-        /// Drain the contamination bucket at the spec-configured regen
-        /// rate. Called by the sampler on ticks when no badwater was
-        /// drunk. Clamps at 0.
-        /// </summary>
         public void RegenContamination(float deltaDays)
         {
             _isAbsorbing = false;
@@ -198,8 +197,6 @@ namespace Mods.WhereWyrmsWait.Wyrm
             float regen = (_spec?.ContaminationRegenPerDay ?? 0.2f) * deltaDays;
             _contamination = Mathf.Max(0f, _contamination - regen);
         }
-
-        // -------- lifecycle --------
 
         public void InitializeEntity()
         {
@@ -210,10 +207,7 @@ namespace Mods.WhereWyrmsWait.Wyrm
 
         public override void Tick()
         {
-            if (!_initialized || _spec == null)
-            {
-                return;
-            }
+            if (!_initialized || _spec == null) return;
             if (_settings == null)
             {
                 WyrmDiagnostics.LogOnce(
@@ -224,7 +218,6 @@ namespace Mods.WhereWyrmsWait.Wyrm
             }
 
             float deltaDays = _dayNightCycle.FixedDeltaTimeInHours / 24f;
-
             TickHunger(deltaDays);
 
             if (_contamination >= LethalContamination)
@@ -239,22 +232,22 @@ namespace Mods.WhereWyrmsWait.Wyrm
             saver.Set(HungerKey, _hunger);
             saver.Set(ContaminationKey, _contamination);
             saver.Set(SatedKey, _sated);
-            // Persist position so the wyrm reloads where it died, not at
-            // the world origin. The wyrm template doesn't include vanilla
-            // Character (which would do this for free), so we own it.
             if (Transform != null)
             {
                 saver.Set(PositionKey, Transform.position);
                 saver.Set(RotationKey, Transform.rotation);
             }
+            // Skip empty owner-id to keep husk-born wyrms tidy in the save.
+            if (_owningDenId != Guid.Empty)
+            {
+                saver.Set(OwningDenIdKey, _owningDenId);
+            }
         }
 
         public void Load(IEntityLoader entityLoader)
         {
-            if (!entityLoader.TryGetComponent(SaveKey, out var loader))
-            {
-                return;
-            }
+            if (!entityLoader.TryGetComponent(SaveKey, out var loader)) return;
+
             if (loader.Has(HungerKey)) _hunger = loader.Get(HungerKey);
             if (loader.Has(ContaminationKey)) _contamination = loader.Get(ContaminationKey);
             if (loader.Has(SatedKey)) _sated = loader.Get(SatedKey);
@@ -266,18 +259,33 @@ namespace Mods.WhereWyrmsWait.Wyrm
                     : Transform.rotation;
                 Transform.SetPositionAndRotation(pos, rot);
             }
+            // Resolving the den instance here would race against the
+            // den's own load — entity load order isn't guaranteed.
+            // PostLoadEntity does the lookup once everyone's loaded.
+            if (loader.Has(OwningDenIdKey))
+            {
+                _owningDenId = loader.Get(OwningDenIdKey);
+            }
+        }
+
+        public void PostLoadEntity()
+        {
+            if (_owningDenId == Guid.Empty || _owningDen != null) return;
+            // Den may have been deleted in this save (e.g. dynamited)
+            // — null result is fine, the wyrm is just orphaned and
+            // doesn't count toward any cap.
+            var entity = _entityRegistry.GetEntity(_owningDenId);
+            if (entity == null) return;
+            _owningDen = entity.GetComponent<WyrmDen>();
         }
 
         public void DeleteEntity()
         {
             _registry.Unregister(this);
-            // Belt-and-braces: if anything tries to tick us between now and
-            // GameObject destruction (e.g. a queued frame), the _initialized
-            // gate makes Tick() bail cleanly.
+            // Gate Tick() against any queued frame between now and
+            // GameObject destruction.
             _initialized = false;
         }
-
-        // -------- internals --------
 
         private void TickHunger(float deltaDays)
         {

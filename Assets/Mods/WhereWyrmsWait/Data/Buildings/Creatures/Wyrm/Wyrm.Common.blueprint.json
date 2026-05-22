@@ -17,7 +17,7 @@
     "ContaminationRegenPerDay": 0.2,
     "HungerPerDay": 1.0,
     "HungerMax": 1.0,
-    "WallChewPerDay": 5.0,
+    "BlockChewDays": 1.5,
     "WalkSpeed": 1.0,
     "HuntingThreshold": 0.6,
     "MinSpeedMultiplier": 0.2

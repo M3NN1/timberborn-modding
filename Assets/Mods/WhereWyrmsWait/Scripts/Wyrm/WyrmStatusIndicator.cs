@@ -7,51 +7,32 @@ using UnityEngine;
 namespace Mods.WhereWyrmsWait.Wyrm
 {
     /// <summary>
-    /// Adds floating-icon status indicators above the wyrm so players can
-    /// read its mood from camera height without clicking. Four states:
-    /// <list type="bullet">
-    /// <item>Sated (Soothesop in range)</item>
-    /// <item>Poisoned (standing on contaminated water)</item>
-    /// <item>Hunting (hunger above threshold and an actual beaver target)</item>
-    /// <item>Stalking (hungry, threshold passed, but no beaver to chase)</item>
-    /// </list>
-    /// <para>
-    /// Below the hunting threshold (digesting), no icon shows — that's
-    /// the "neutral" state where the wyrm wanders harmlessly.
-    /// </para>
-    /// <para>
-    /// Reuses vanilla sprite IDs to avoid an AssetBundle dependency, the
-    /// same trick DDD's dam status uses. Priority: sated > poisoned >
-    /// hunting > stalking — only one icon at a time.
-    /// </para>
+    /// Adds entity-panel status indicators for the wyrm. Four states,
+    /// priority sated &gt; poisoned &gt; hunting &gt; stalking; below
+    /// the hunting threshold (digesting) all are off. Renders in the
+    /// vanilla <c>StatusListFragment</c> row — we use
+    /// <see cref="StatusToggle.CreateNormalStatus"/>, not the
+    /// <c>…WithFloatingIcon</c> variants, so no icon shows over the
+    /// wyrm's head in the world. Reuses vanilla sprite IDs (placeholder
+    /// until mod-owned sprites ship; see Placeholders/README.md).
     /// </summary>
     public class WyrmStatusIndicator : TickableComponent, IAwakableComponent
     {
-        // Localization keys for the floating-icon hover text.
         private const string SatedLocKey = "WWW.Wyrm.SatedStatus";
         private const string HuntingLocKey = "WWW.Wyrm.HuntingStatus";
         private const string StalkingLocKey = "WWW.Wyrm.StalkingStatus";
         private const string PoisonedLocKey = "WWW.Wyrm.PoisonedStatus";
 
-        // Reused vanilla sprites (verified against TimberbornRef status sprite
-        // catalog). Names are leaf-only; StatusSpriteLoader prefixes
-        // "Sprites/StatusIcons/".
-        // - LackOfResources: yellow icon, used by workshops out-of-resources
-        //   for the "happily fed" feel of a sated wyrm.
-        // - GenericError: red icon for the hunting state — vanilla
-        //   uses it for high-priority alerts; reads as "danger here".
-        // - GenericError reused with different loc text for "stalking" —
-        //   "I want prey but found none" — same red urgency without an
-        //   extra sprite slot.
-        // - BuildingBlockedByContamination: badwater-themed icon used
-        //   elsewhere for buildings that can't operate due to contamination.
-        //   Best fit for a poisoned-by-badwater wyrm.
+        // Vanilla sprite IDs (leaf-only; StatusSpriteLoader prefixes
+        // "Sprites/StatusIcons/"). Picked for visual fit:
+        //   LackOfResources              — yellow, "satisfied" feel
+        //   GenericError                 — red, urgent (hunting/stalking)
+        //   BuildingBlockedByContamination — badwater theme (poisoned)
         private const string SatedSprite = "LackOfResources";
         private const string HuntingSprite = "GenericError";
         private const string StalkingSprite = "GenericError";
         private const string PoisonedSprite = "BuildingBlockedByContamination";
 
-        // We don't need to check every tick — moods change at human pace.
         private const int RecomputeEveryTicks = 12;
 
         private readonly ILoc _loc;
@@ -81,13 +62,13 @@ namespace Mods.WhereWyrmsWait.Wyrm
         public override void StartTickable()
         {
             if (_statusSubject == null) return;
-            _satedToggle = StatusToggle.CreateNormalStatusWithFloatingIcon(
+            _satedToggle = StatusToggle.CreateNormalStatus(
                 SatedSprite, _loc.T(SatedLocKey));
-            _huntingToggle = StatusToggle.CreateNormalStatusWithFloatingIcon(
+            _huntingToggle = StatusToggle.CreateNormalStatus(
                 HuntingSprite, _loc.T(HuntingLocKey));
-            _stalkingToggle = StatusToggle.CreateNormalStatusWithFloatingIcon(
+            _stalkingToggle = StatusToggle.CreateNormalStatus(
                 StalkingSprite, _loc.T(StalkingLocKey));
-            _poisonedToggle = StatusToggle.CreateNormalStatusWithFloatingIcon(
+            _poisonedToggle = StatusToggle.CreateNormalStatus(
                 PoisonedSprite, _loc.T(PoisonedLocKey));
             _statusSubject.RegisterStatus(_satedToggle);
             _statusSubject.RegisterStatus(_huntingToggle);
@@ -101,8 +82,6 @@ namespace Mods.WhereWyrmsWait.Wyrm
             if (_ticksSinceRecompute++ < RecomputeEveryTicks) return;
             _ticksSinceRecompute = 0;
 
-            // Priority: sated > poisoned > hunting > stalking.
-            // Below the hunting threshold (digesting), all four are off.
             bool sated = _wyrm.IsSated;
             bool poisoned = !sated && _wyrm.IsAbsorbingContamination;
             bool huntingMode = !sated && !poisoned && _wyrm.IsHunting;
